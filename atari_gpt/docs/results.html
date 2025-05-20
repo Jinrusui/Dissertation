@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Results</h1>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="about.html">About</a>
+            <a href="videos.html">Videos</a>
+            <a href="contact.html">Contact</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>Performance Analysis</h2>
+            <p>We evaluated the performance of GPT-4V, GPT-4o, Gemini 1.5 Flash, and Claude 3 Haiku across several Atari games. Models were assessed on game scores, visual understanding, spatial reasoning, and strategic capabilities.</p>
+            <ul>
+                <li>Best model: GPT-4o with a normalized performance of 23.2% when compared to a human.</li>
+                <li>There is a significant gap in visual and spatial reasoning.</li>
+                <li>Model inferencing in its current state is not yet fast enough for real time gameplay.</li>
+                <li>Models outperformed random agents but lagged behind humans and RL agents.</li>
+            </ul>
+        </section>
+        <section>
+            <h2>Human Normalized Scores</h2>
+            <img src="Norm_perf.jpg" alt="Performance Chart">
+
+            <h2>Human Normalized Scores per environment</h2>
+            <img src="Norm_perf_ind.jpg" alt="Performance Chart">
+        </section>
+        <section>
+            <h2>Visual and Spatial Reasoning</h2>
+            <img src="vis_perf.png" alt="Performance Chart">
+        </section>
+        <section>
+            <h2>Key Insights</h2>
+            <ul>
+                <li>Visual reasoning is moderately successful; spatial reasoning remains a bottleneck.</li>
+                <li>Inference time (2-7 seconds) is a major hurdle for real-time applications.</li>
+                <li>Models demonstrated basic understanding of game mechanics, signaling potential for improvement.</li>
+            </ul>
+        </section>
+        <section>
+            <h2>How to Cite</h2>
+            <p>If you find our work useful, please use the following citation:</p>
+            <pre>
+        @misc{waytowich2024atarigptinvestigatingcapabilitiesmultimodal,
+            title={atari_gpt: Investigating the Capabilities of Multimodal Large Language Models as Low-Level Policies for Atari Games}, 
+            author={Nicholas R. Waytowich and Devin White and MD Sunbeam and Vinicius G. Goecks},
+            year={2024},
+            eprint={2408.15950},
+            archivePrefix={arXiv},
+            primaryClass={cs.AI},
+            url={https://arxiv.org/abs/2408.15950}
+        }
+            </pre>
+            <p>You can also find our paper on <a href="https://arxiv.org/abs/2408.15950" target="_blank">arXiv</a>.</p>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2024 atari_gpt Research Team.</p>
+    </footer>
+</body>
+</html>

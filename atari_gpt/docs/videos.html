@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gameplay Videos</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Gameplay Videos</h1>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="about.html">About</a>
+            <a href="results.html">Results</a>
+            <a href="contact.html">Contact</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>Watch Model Performance</h2>
+            <p>Explore how the models performed in different games like Pong, Space Invaders, and Ms. PacMan. See their decision-making in action.</p>
+            <div>
+                <h3>Alien</h3>
+                <video autoplay loop muted controls width="640" height="360">
+                    <source src="videos/Alien.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+            <div>
+                <h3>Breakout</h3>
+                <video autoplay loop muted controls width="640" height="360">
+                    <source src="videos/Breakout.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+            <div>
+                <h3>Frogger</h3>
+                <video autoplay loop muted controls width="640" height="360">
+                    <source src="videos/Frogger.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+            <div>
+                <h3>Ms. Pacman</h3>
+                <video autoplay loop muted controls width="640" height="360">
+                    <source src="videos/MsPacman.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+            <div>
+                <h3>Pong</h3>
+                <video autoplay loop muted controls width="640" height="360">
+                    <source src="videos/Pong.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+            <div>
+                <h3>Seaquest</h3>
+                <video autoplay loop muted controls width="640" height="360">
+                    <source src="videos/Seaquest.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+            <div>
+                <h3>Space Invaders</h3>
+                <video autoplay loop muted controls width="640" height="360">
+                    <source src="videos/SpaceInvaders.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+        </section>
+        <section>
+            <h2>How to Cite</h2>
+            <p>If you find our work useful, please use the following citation:</p>
+            <pre>
+        @misc{waytowich2024atarigptinvestigatingcapabilitiesmultimodal,
+            title={atari_gpt: Investigating the Capabilities of Multimodal Large Language Models as Low-Level Policies for Atari Games}, 
+            author={Nicholas R. Waytowich and Devin White and MD Sunbeam and Vinicius G. Goecks},
+            year={2024},
+            eprint={2408.15950},
+            archivePrefix={arXiv},
+            primaryClass={cs.AI},
+            url={https://arxiv.org/abs/2408.15950}
+        }
+            </pre>
+            <p>You can also find our paper on <a href="https://arxiv.org/abs/2408.15950" target="_blank">arXiv</a>.</p>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2024 atari_gpt Research Team.</p>
+    </footer>
+    <script>
+        // Ensure videos loop even if the loop attribute fails
+        document.querySelectorAll('video').forEach(video => {
+            video.addEventListener('ended', () => {
+                video.play(); // Restart the video when it ends
+            });
+        });
+    </script>
+</body>
+</html>

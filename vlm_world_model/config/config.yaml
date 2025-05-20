@@ -1,0 +1,83 @@
+# Overall system configuration
+system:
+  seed: 42
+  log_level: INFO
+  log_dir: "logs/"
+
+# VLM Planner settings (based on atari_gpt)
+vlm:
+  # Model settings
+  model_key: "gpt4o"  # Options: gpt4, gpt4o, claude, gemini, qwen
+  model_name: "gpt-4o"  # Specific model name
+  temperature: 1.0
+  
+  # Planning configuration
+  num_plans: 3        # Number of alternative plans to generate
+  plan_horizon: 5     # How many steps ahead to plan
+  action_placeholders: "action1, action2, ..., action{plan_horizon}"  # Will be formatted at runtime
+  plan_placeholders: ",...more plans up to {num_plans} total..."      # Will be formatted at runtime
+
+  # Prompt settings
+  system_message: >
+    You are a game playing assistant for Atari Breakout.
+    You will be provided with the current game state as an image.
+    Your task is to generate {num_plans} alternative action plans, each consisting of {plan_horizon} steps.
+    For each plan, explain your reasoning and predict what will happen.
+    The available actions are: 0 (NOOP), 1 (FIRE), 2 (RIGHT), 3 (LEFT).
+    Format your response as a JSON with the following structure:
+    {
+      "reasoning": "your overall reasoning about the game state",
+      "plans": [
+        {
+          "actions": [{action_placeholders}],
+          "explanation": "why this sequence of actions makes sense",
+          "expected_outcome": "what you expect to happen if these actions are executed"
+        }
+        {plan_placeholders}
+      ]
+    }
+
+# World Model settings (based on iris)
+world_model:
+  # Model paths should use last.pt
+  # Model configuration
+  device: "cuda"                # Options: cuda, cpu
+
+  max_tokens: 1024             # Maximum number of tokens to process
+  
+  # Simulation settings
+  num_rollouts: 3             # Number of trajectories to simulate for uncertainty estimation
+  reward_discount: 0.99       # Discount factor for future rewards
+  
+  # Evaluation settings
+  use_expected_reward: true   # Whether to use expected reward or actual simulated reward
+
+
+
+# # Environment settings
+# environment:
+#   name: "ALE/Breakout-v5"     # Gym environment name
+#   render_mode: "rgb_array"    # Rendering mode
+#   frame_skip: 4               # Number of frames to skip between actions
+#   max_episode_steps: 10000    # Maximum number of steps per episode
+  
+#   # Frame processing
+#   frame_size: [84, 84]        # Size to resize frames to
+#   frame_stack: 4              # Number of frames to stack
+#   grayscale: false            # Whether to convert frames to grayscale
+#   normalize: true             # Whether to normalize pixel values
+
+# # Action Buffer settings
+# action_buffer:
+#   plan_selection: "max_reward"  # Options: max_reward, max_expected_reward
+#   replan_threshold: 0.5         # Threshold for when to trigger replanning
+#   execution_strategy: "step_by_step"  # Options: step_by_step, full_plan
+#   confidence_threshold: 0.7     # Minimum confidence to execute a plan without replanning
+#   max_replans_per_step: 2       # Maximum number of times to replan at each step
+
+# Paths and integration settings
+paths:
+  atari_gpt_path: "../atari_gpt"
+  iris_path: "../iris"
+  results_dir: "results/"
+  checkpoint_dir: "checkpoints/"

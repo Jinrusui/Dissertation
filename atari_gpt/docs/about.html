@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About atari_gpt</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>About atari_gpt</h1>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="results.html">Results</a>
+            <a href="videos.html">Videos</a>
+            <a href="contact.html">Contact</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>Abstract</h2>
+            <p>Recent advancements in large language models (LLMs) have expanded their capabilities beyond traditional text-based tasks to multimodal domains, integrating visual, auditory, and textual data. While multimodal LLMs have been extensively explored for high-level planning in domains like robotics and games, their potential as low-level controllers remains largely untapped. In this paper we introduce a novel benchmark aimed at testing the emergent capabilities of multimodal LLMs as low-level policies in Atari games. Unlike traditional reinforcement learning (RL) methods that require training for each new environment and reward function specification, these LLMs utilize pre-existing multimodal knowledge to directly engage with game environments. Our study assesses multiple multimodal LLMs performance against traditional RL agents, human players, and random agents, focusing on their ability to understand and interact with complex visual scenes and formulate strategic responses. Our results show that these multimodal LLMs are not yet capable of being zero-shot low-level policies, further, we see that this is, in part, due to their visual and spatial reasoning. </p>
+        </section>
+        <section>
+            <h2>Key Contributions</h2>
+            <ul>
+                <li>Introduction of a benchmark for assessing multimodal LLMs as low-level controllers.</li>
+                <li>Comparison of game play performance across GPT-4V, GPT-4o, Gemini 1.5 Flash, and Claude 3 Haiku.</li>
+                <li>Investigation into the visual and spatial reasoning capabilities of these models.</li>
+                <li>Identifying key areas of research which can improve performance.</li>
+            </ul>
+        </section>
+        <section>
+            <h2>Why It Matters</h2>
+            <p>atari_gpt pushes the boundaries of what LLMs can achieve, exploring their application beyond text-based tasks into visually complex, real-time decision-making environments. This work investigates the emergent capabilities of LLMs to perform as low-level controllers in Atari, which sets the foundation for future work in more advanced environments.</p>
+        </section>
+        <section>
+            <h2>How to Cite</h2>
+            <p>If you find our work useful, please use the following citation:</p>
+            <pre>
+        @misc{waytowich2024atarigptinvestigatingcapabilitiesmultimodal,
+            title={atari_gpt: Investigating the Capabilities of Multimodal Large Language Models as Low-Level Policies for Atari Games}, 
+            author={Nicholas R. Waytowich and Devin White and MD Sunbeam and Vinicius G. Goecks},
+            year={2024},
+            eprint={2408.15950},
+            archivePrefix={arXiv},
+            primaryClass={cs.AI},
+            url={https://arxiv.org/abs/2408.15950}
+        }
+            </pre>
+            <p>You can also find our paper on <a href="https://arxiv.org/abs/2408.15950" target="_blank">arXiv</a>.</p>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2024 atari_gpt Research Team.</p>
+    </footer>
+</body>
+</html>
