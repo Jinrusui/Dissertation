@@ -45,10 +45,6 @@ Describe the main files and folders in the project. For example:
 - `notebooks/` – Jupyter notebooks
 - `scripts/` – Utility scripts
 
-## Contributing
-
-Contributions are welcome! Please open issues or submit pull requests for suggestions or improvements.
-
 ## License
 
 Specify your license here (e.g., MIT, GPL, etc.).
