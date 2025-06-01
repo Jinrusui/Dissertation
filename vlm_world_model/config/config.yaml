@@ -38,34 +38,41 @@ vlm:
     }
 
 # World Model settings (based on iris)
+defaults:
+  - _self_
+  - tokenizer: default
+  - world_model: default
+
+common:
+  device: cuda
+  sequence_length: ${world_model.max_blocks}
+
 world_model:
-  # Model paths should use last.pt
-  # Model configuration
-  device: "cuda"                # Options: cuda, cpu
+  _target_: iris.src.models.world_model.WorldModel
+  obs_vocab_size: null  # Will be set at runtime
+  act_vocab_size: null  # Will be set at runtime
+  config:
+    max_blocks: 5
+    num_layers: 8
+    num_heads: 8
+    head_dim: 64
+    hidden_dim: 512
+    mlp_dim: 2048
+    vocab_size: null  # Will be set at runtime
+    dropout: 0.1
 
-  max_tokens: 1024             # Maximum number of tokens to process
+# Environment settings
+environment:
+  name: "Breakout"     # Gym environment name
+  # render_mode: "rgb_array"    # Rendering mode
+  # frame_skip: 4               # Number of frames to skip between actions
+  # max_episode_steps: 10000    # Maximum number of steps per episode
   
-  # Simulation settings
-  num_rollouts: 3             # Number of trajectories to simulate for uncertainty estimation
-  reward_discount: 0.99       # Discount factor for future rewards
-  
-  # Evaluation settings
-  use_expected_reward: true   # Whether to use expected reward or actual simulated reward
-
-
-
-# # Environment settings
-# environment:
-#   name: "ALE/Breakout-v5"     # Gym environment name
-#   render_mode: "rgb_array"    # Rendering mode
-#   frame_skip: 4               # Number of frames to skip between actions
-#   max_episode_steps: 10000    # Maximum number of steps per episode
-  
-#   # Frame processing
-#   frame_size: [84, 84]        # Size to resize frames to
-#   frame_stack: 4              # Number of frames to stack
-#   grayscale: false            # Whether to convert frames to grayscale
-#   normalize: true             # Whether to normalize pixel values
+  # # Frame processing
+  # frame_size: [84, 84]        # Size to resize frames to
+  # frame_stack: 4              # Number of frames to stack
+  # grayscale: false            # Whether to convert frames to grayscale
+  # normalize: true             # Whether to normalize pixel values
 
 # # Action Buffer settings
 # action_buffer:

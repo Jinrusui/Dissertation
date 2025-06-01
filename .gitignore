@@ -1,1 +1,4 @@
 iris/checkpoints/last.pt
+
+__pycache__/
+.pytest_cache/

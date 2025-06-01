@@ -1,0 +1,36 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="atari_gpt",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[
+        "ale-py>=0.8.1",
+        "anthropic>=0.25.7",
+        "autorom>=0.4.2",
+        "autorom-accept-rom-license>=0.6.1",
+        "gymnasium>=0.29.1",
+        "matplotlib>=3.9.1",
+        "moviepy>=1.0.3",
+        "numpy>=1.26.4",
+        "opencv-python>=4.9.0",
+        "openai>=1.25.0",
+        "pygame>=2.6.0",
+        "pydantic>=2.7.1",
+        "pyyaml>=6.0.1",
+        "tqdm>=4.66.2",
+    ],
+    python_requires=">=3.9",
+    author="Your Name",
+    author_email="your.email@example.com",
+    description="A package for Atari game experiments with GPT models",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/yourusername/atari_gpt",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3.9",
+    ],
+) 

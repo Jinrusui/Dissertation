@@ -71,6 +71,7 @@ class WorldModel(nn.Module):
                 nn.ReLU(),
                 nn.Linear(config.embed_dim, 2)
             )
+
         )
 
         self.apply(init_weights)
