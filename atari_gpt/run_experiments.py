@@ -28,6 +28,7 @@ class ContinuousRecordVideo(RecordVideo):
 
 class run():
     def __init__(self, env_name, prompt, model, output_dir="./experiments/"):
+
       self.model_name = model
       self.rewards = 0
       self.cum_rewards = []

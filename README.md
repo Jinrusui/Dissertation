@@ -1,6 +1,6 @@
 # Dissertation
 
-This repository contains the code and resources related to my dissertation project.
+This repository contains the code and resources related to my dissertation project on Vision Language Models (VLMs) and World Models for reinforcement learning.
 
 ## Table of Contents
 
@@ -14,7 +14,11 @@ This repository contains the code and resources related to my dissertation proje
 
 ## Project Overview
 
-Provide a summary of your dissertation topic, research goals, and what this repository contains.
+This dissertation explores the application of Vision Language Models (VLMs) in world modeling for reinforcement learning environments. The research focuses on how VLMs can be leveraged to create more effective world models that understand and predict complex environments, particularly in visual domains like Atari games. The repository contains implementations of various approaches, including:
+
+- VLM-based world models for environment prediction
+- Iris models for visual understanding
+- Atari-GPT for game state prediction and policy learning
 
 ## Installation
 
@@ -23,31 +27,66 @@ Provide a summary of your dissertation topic, research goals, and what this repo
    git clone https://github.com/Jinrusui/Dissertation.git
    cd Dissertation
    ```
-2. (Optional) Create and activate a virtual environment:
+
+2. CUDA Requirements:
+   This project requires CUDA 11.3.0 (included in the repository as `cuda_11.3.0_465.19.01_linux.run`). To install CUDA:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+   chmod +x cuda_11.3.0_465.19.01_linux.run
+   sudo ./cuda_11.3.0_465.19.01_linux.run
    ```
-3. Install dependencies (if any):
-   ```bash
-   pip install -r requirements.txt
-   ```
+   Follow the installation prompts. Make sure to install the CUDA Toolkit and appropriate drivers.
+
+3. Create and activate the conda environment:
+   - For Linux/macOS:
+     ```bash
+     conda env create -f environment.yaml
+     conda activate vlm_wm
+     ```
+   - For Windows:
+     ```bash
+     conda env create -f environment_win.yaml
+     conda activate vlm_wm
+     ```
 
 ## Usage
 
-Explain how to use the code in this repository. Provide examples and command-line instructions if relevant.
+### Running VLM World Model Experiments
+
+Navigate to the vlm_world_model directory and run the main script:
+```bash
+cd vlm_world_model
+python src/main.py --config=config/default.yaml
+```
+
+
+### Atari-GPT Experiments
+
+For running Atari game experiments with GPT integration:
+```bash
+cd atari_gpt
+python run_experiments.py --game=Breakout --model=gpt4
+```
 
 ## Project Structure
 
-Describe the main files and folders in the project. For example:
-- `src/` – Source code
-- `data/` – Datasets and data files
-- `notebooks/` – Jupyter notebooks
-- `scripts/` – Utility scripts
+- `vlm_world_model/` – Implementation of VLM-based world models
+  - `src/` – Source code for the world model implementation
+  - `config/` – Configuration files for experiments
+  
+- `iris/` – Vision model implementation
+  - `models/` – Model architecture definitions
+  - `data/` – Data processing utilities
+  - `checkpoints/` – Model checkpoints (not included in git)
+
+- `atari_gpt/` – Integration of GPT models with Atari environments
+  - `envs/` – Environment wrappers
+  - `models/` – Policy and value network implementations
+
+- `outputs/` – Experiment outputs and results (not included in git)
 
 ## License
 
-Specify your license here (e.g., MIT, GPL, etc.).
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Contact
 

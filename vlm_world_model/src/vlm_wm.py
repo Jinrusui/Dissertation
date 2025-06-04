@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import torch
@@ -31,6 +31,8 @@ sys.path.insert(0, '/mnt/e/Projects/Dissertation')
 from atari_gpt.llms import Agent  # parent base class (already on import path)
 from iris.src.models.tokenizer.tokenizer import Tokenizer, TokenizerEncoderOutput
 from iris.src.models.world_model import WorldModel, WorldModelOutput
+from PIL import Image
+import cv2
 
 logger = logging.getLogger("vlm_wm_agent")
 
@@ -39,9 +41,28 @@ __all__ = ["VLMWorldModelAgent"]
 
 def _rgb_to_bchw(rgb: np.ndarray, device: torch.device) -> torch.Tensor:
     """H × W × C uint8 → 1 × C × H × W float32[0,1]."""
-    if rgb.dtype != np.uint8:
+    if isinstance(rgb, str):
+        # If we somehow got a string, this is an error
+        raise TypeError(f"Expected image data, got string: {rgb[:30]}...")
+    
+    # Handle PIL Image
+    if hasattr(rgb, 'convert'):  # Check if it's a PIL Image
+        rgb = np.array(rgb)
+        
+    if hasattr(rgb, 'dtype') and rgb.dtype != np.uint8:
+        # If we have float values, ensure they're in [0,1] and convert to uint8
         rgb = (rgb.clip(0, 1) * 255).astype(np.uint8)
-    tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255.0).unsqueeze(0)
+    
+    # Handle different channel arrangements
+    if len(rgb.shape) == 3 and rgb.shape[2] == 3:
+        # Standard HWC format
+        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255.0).unsqueeze(0)
+    elif len(rgb.shape) == 3 and rgb.shape[0] == 3:
+        # Already in CHW format
+        tensor = torch.from_numpy(rgb).float().div(255.0).unsqueeze(0)
+    else:
+        raise ValueError(f"Unexpected image shape: {rgb.shape}")
+    
     return tensor.to(device)
 
 
@@ -81,7 +102,7 @@ class VLMWorldModelAgent(Agent):
         self.num_plans = num_plans
 
         self._num_obs_tokens: int | None = None  # cache after first encode
-
+        print("VLMWorldModelAgent initialized!!!!!")
     # ---------------------------------------------------------------------
     # PUBLIC API (unchanged signature) ------------------------------------
     # ---------------------------------------------------------------------
@@ -100,7 +121,7 @@ class VLMWorldModelAgent(Agent):
             return 0, vlm_json
 
         # === 2. Evaluate via world‑model ============================================
-        obs_rgb = self.env.render(mode="rgb_array")
+        obs_rgb = self.env.render()
         best_action = self._pick_best_action(obs_rgb, plans)
         return best_action, vlm_json
 
@@ -204,21 +225,52 @@ class VLMWorldModelAgent(Agent):
     # STEP 2 – world‑model rollout to score each plan ---------------------
     # ---------------------------------------------------------------------
 
-    def _pick_best_action(self, rgb_obs: np.ndarray, plans: List[List[int]]) -> int:
+    def _pick_best_action(self, rgb_obs: Union[np.ndarray, Image.Image], plans: List[Dict[str, Any]]) -> int:
         """Return first action of plan with highest predicted cumulative reward."""
-        obs_tensor = _rgb_to_bchw(rgb_obs, self.device)
-        enc: TokenizerEncoderOutput = self.tokenizer.encode(obs_tensor, should_preprocess=True)
-        init_tokens = enc.tokens  # [1,K]
-        if self._num_obs_tokens is None:
-            self._num_obs_tokens = init_tokens.shape[1]
+        try:
+            # Convert PIL Image to numpy array if needed
+            if hasattr(rgb_obs, 'convert'):  # Check if it's a PIL Image
+                rgb_obs = np.array(rgb_obs)
+            
+            # Resize observation if needed to match tokenizer's expected input size
+            if rgb_obs.shape[0] != 64 or rgb_obs.shape[1] != 64:
+                logger.info(f"Resizing observation from {rgb_obs.shape} to 64x64")
+                rgb_obs = cv2.resize(rgb_obs, (64, 64))
+            
+            obs_tensor = _rgb_to_bchw(rgb_obs, self.device)
+            enc: TokenizerEncoderOutput = self.tokenizer.encode(obs_tensor, should_preprocess=True)
+            init_tokens = enc.tokens  # [1,K]
+            
+            if self._num_obs_tokens is None:
+                self._num_obs_tokens = init_tokens.shape[1]
+                logger.info(f"Number of observation tokens: {self._num_obs_tokens}")
 
-        best_score = -float("inf")
-        best_first_action = 0
-        for plan in plans:
-            score = self._simulate(init_tokens, plan)
-            if score > best_score:
-                best_score, best_first_action = score, plan[0]
-        return int(best_first_action)
+            best_score = -float("inf")
+            best_first_action = 0
+            
+            for i, plan in enumerate(plans):
+                # Extract actions from the plan dictionary
+                if isinstance(plan, dict) and 'actions' in plan:
+                    actions = plan['actions']
+                else:
+                    logger.warning(f"Unexpected plan format: {plan}")
+                    continue
+                
+                try:
+                    score = self._simulate(init_tokens, actions)
+                    logger.info(f"Plan {i+1} score: {score}")
+                    if score > best_score:
+                        best_score, best_first_action = score, actions[0]
+                except Exception as e:
+                    logger.error(f"Error simulating plan {i+1}: {str(e)}")
+                    continue
+                
+            logger.info(f"Selected best action: {best_first_action} with score: {best_score}")
+            return int(best_first_action)
+        except Exception as e:
+            logger.error(f"Error in _pick_best_action: {str(e)}")
+            # Return NOOP (0) as a safe fallback
+            return 0
 
     @torch.no_grad()
     def _simulate(self, obs_tokens: torch.LongTensor, actions: List[int]) -> float:
@@ -227,16 +279,53 @@ class VLMWorldModelAgent(Agent):
         cumulative_reward = 0.0
         done = False
 
-        for a in actions:
-            if done:
-                break
-            act_tok = torch.tensor([[a]], device=self.device, dtype=torch.long)
-            inp = torch.cat([tokens, act_tok], dim=1)
-            out: WorldModelOutput = self.world_model(inp)
+        # Get max token limit from world model config if available
+        max_tokens = None
+        if hasattr(self.world_model, 'config'):
+            if hasattr(self.world_model.config, 'max_blocks') and hasattr(self.world_model.config, 'tokens_per_block'):
+                max_tokens = self.world_model.config.max_blocks * self.world_model.config.tokens_per_block
+                logger.info(f"Max tokens: {max_tokens}, Current tokens: {tokens.shape[1]}")
 
-            reward = out.logits_rewards.argmax(dim=-1).item() - 1  # logits class → {-1,0,1}
-            cumulative_reward += reward
-            done = out.logits_ends.argmax(dim=-1).item() == 1
-            tokens = out.logits_observations.argmax(dim=-1)
+        for a_idx, a in enumerate(actions):
+            if done:
+                logger.debug(f"Stopping simulation at step {a_idx} due to done=True")
+                break
+            
+            # Check if we've reached the token limit
+            if max_tokens is not None and tokens.shape[1] >= max_tokens - 1:
+                logger.warning(f"Reached token limit during simulation at step {a_idx}, stopping early")
+                break
+            
+            try:
+                # Create action token and concatenate with current tokens
+                act_tok = torch.tensor([[a]], device=self.device, dtype=torch.long)
+                inp = torch.cat([tokens, act_tok], dim=1)
+                
+                # Run world model inference
+                out = self.world_model(inp)
+
+                # Extract reward prediction
+                if out.logits_rewards.size(1) > 0:
+                    reward = out.logits_rewards.argmax(dim=-1).item() - 1  # logits class → {-1,0,1}
+                    cumulative_reward += reward
+                else:
+                    logger.warning(f"Empty rewards tensor at step {a_idx}")
+                
+                # Check if episode is done
+                if out.logits_ends.size(1) > 0:
+                    done = out.logits_ends.argmax(dim=-1).item() == 1
+                
+                # Get next observation tokens
+                tokens = out.logits_observations.argmax(dim=-1)
+                
+            except IndexError as e:
+                logger.error(f"Index error during simulation at step {a_idx}: {str(e)}")
+                break
+            except RuntimeError as e:
+                logger.error(f"Runtime error during simulation at step {a_idx}: {str(e)}")
+                break
+            except Exception as e:
+                logger.error(f"Error during simulation at step {a_idx}: {str(e)}")
+                break
 
         return cumulative_reward
