@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 outputs
 atari_gpt/OPENAI_API_KEY
+vlm_world_model/config/OPENAI_API_KEY.txt
