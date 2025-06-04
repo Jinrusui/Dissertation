@@ -14,11 +14,8 @@ This repository contains the code and resources related to my dissertation proje
 
 ## Project Overview
 
-This dissertation explores the application of Vision Language Models (VLMs) in world modeling for reinforcement learning environments. The research focuses on how VLMs can be leveraged to create more effective world models that understand and predict complex environments, particularly in visual domains like Atari games. The repository contains implementations of various approaches, including:
+This dissertation explores the application of Vision Language Models (VLMs) in world modeling for reinforcement learning environments. The research focuses on how VLMs can be leveraged to create more effective world models that understand and predict complex environments, particularly in visual domains like Atari games. The repository contains implementations of VLM agent with world model based on two existing repos [Iris](https://github.com/eloialonso/iris) and [Atari-GPT](https://github.com/nwayt001/atari-gpt).
 
-- VLM-based world models for environment prediction
-- Iris models for visual understanding
-- Atari-GPT for game state prediction and policy learning
 
 ## Installation
 
