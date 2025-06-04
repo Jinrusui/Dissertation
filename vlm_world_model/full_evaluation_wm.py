@@ -22,6 +22,7 @@ from tqdm import tqdm
 from vlm_world_model.run_experiments_wm import RunWithWorldModel
 from iris.src.models.tokenizer.tokenizer import Tokenizer
 from iris.src.models.world_model import WorldModel
+from iris.src.utils import extract_state_dict 
 
 def setup_logging(log_path="evaluation_wm.log", log_level="INFO"):
     """Configure logging for the evaluation script."""
@@ -53,14 +54,15 @@ def load_world_model(cfg: DictConfig, iris_path: str, device: str = "cuda"):
         logger.info(f"Loading world model from {checkpoint_path}")
         
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
-        
         # Initialize world model from config
         world_model = WorldModel(
             obs_vocab_size=tokenizer.vocab_size,
-            act_vocab_size=18,  # Default for Atari, will be updated per env
-            config=instantiate(cfg.world_model.config)
+            act_vocab_size=4,  # Default for Atari, will be updated per env
+            config=instantiate(cfg.world_model)
         )
-        world_model.load_state_dict(checkpoint["state_dict"])
+
+        world_model_state_dict = extract_state_dict(checkpoint, 'world_model')
+        world_model.load_state_dict(world_model_state_dict)
         
         # Move to device
         device = torch.device(device)
@@ -107,6 +109,7 @@ def main(cfg: DictConfig):
     
     # Load world model
     try:
+        
         iris_path = cfg.paths.iris_path
         device = cfg.common.device
         
@@ -140,13 +143,15 @@ def main(cfg: DictConfig):
             logger.info(f"Running test with model: {model_key}")
             
             # Create system message with properly formatted placeholders
+            action_placeholders = cfg.vlm.action_placeholders.format(plan_horizon=plan_horizon)
+            plan_placeholders = cfg.vlm.plan_placeholders.format(num_plans=num_plans)
             system_message = cfg.vlm.system_message.format(
                 num_plans=num_plans,
                 plan_horizon=plan_horizon,
-                action_placeholders=cfg.vlm.action_placeholders,
-                plan_placeholders=cfg.vlm.plan_placeholders
+                action_placeholders=action_placeholders,
+                plan_placeholders=plan_placeholders
             )
-            
+            logger.info(f"System message: {system_message}")
             # Run the evaluation with world model
             results = RunWithWorldModel(
                 env_name=env_name,

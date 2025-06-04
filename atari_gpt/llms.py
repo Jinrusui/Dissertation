@@ -53,6 +53,7 @@ class Agent():
     def _init_openai_client(self):
         """Initialize the OpenAI client with API key."""
         try:
+            
             api_key = self._get_api_key("OPENAI_API_KEY.txt")
             self.client = OpenAI(api_key=api_key) 
 
@@ -116,7 +117,10 @@ class Agent():
             
         # Fall back to file
         try:
-            with open(key_file, "r") as file:
+            package_dir = os.path.dirname(__file__)
+
+            api_key_file_path = os.path.join(package_dir, key_file)
+            with open(api_key_file_path, "r") as file:
                 return file.read().strip()
         except FileNotFoundError:
             logger.error(f"API key file {key_file} not found and {env_var} environment variable not set")

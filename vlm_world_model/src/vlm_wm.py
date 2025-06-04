@@ -11,7 +11,7 @@ agent = VLMWorldModelAgent(model_name=..., model="gpt4o", system_message=..., en
                            tokenizer=tok, world_model=wm, device="cuda:0")
 action, full_response = agent.generate_response(path)   # unchanged call‑site
 ```
-– `full_response` is now the raw JSON produced by the VLM.
+– `full_response` is now the raw JSON produced by the VLM.
 
 The new agent subclasses the original `Agent` and **only overrides the upper‑level call‑chain** so other methods in *run_experiments* stay intact.
 """
@@ -25,6 +25,8 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import torch
+import sys
+sys.path.insert(0, '/mnt/e/Projects/Dissertation')
 
 from atari_gpt.llms import Agent  # parent base class (already on import path)
 from iris.src.models.tokenizer.tokenizer import Tokenizer, TokenizerEncoderOutput
@@ -36,7 +38,7 @@ __all__ = ["VLMWorldModelAgent"]
 
 
 def _rgb_to_bchw(rgb: np.ndarray, device: torch.device) -> torch.Tensor:
-    """H × W × C uint8 → 1 × C × H × W float32[0,1]."""
+    """H × W × C uint8 → 1 × C × H × W float32[0,1]."""
     if rgb.dtype != np.uint8:
         rgb = (rgb.clip(0, 1) * 255).astype(np.uint8)
     tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255.0).unsqueeze(0)
@@ -44,15 +46,15 @@ def _rgb_to_bchw(rgb: np.ndarray, device: torch.device) -> torch.Tensor:
 
 
 class VLMWorldModelAgent(Agent):
-    """LLM + world‑model agent. 100 % compatible with the old *Agent* API used in run_experiments.py.
+    """LLM + world‑model agent. 100 % compatible with the old *Agent* API used in run_experiments.py.
     
     Extra args (over *Agent*):
     -------------------------
-    tokenizer : Tokenizer  – pre‑trained image → token mapper.
-    world_model : WorldModel  – pre‑trained autoregressive world model.
-    plan_horizon : int  – how many steps each plan should contain.
-    num_plans : int  – how many alternative plans VLM must propose.
-    device : str | torch.device  – device for world‑model inference.
+    tokenizer : Tokenizer  – pre‑trained image → token mapper.
+    world_model : WorldModel  – pre‑trained autoregressive world model.
+    plan_horizon : int  – how many steps each plan should contain.
+    num_plans : int  – how many alternative plans VLM must propose.
+    device : str | torch.device  – device for world‑model inference.
     """
 
     # ---------------------------------------------------------------------
@@ -103,7 +105,7 @@ class VLMWorldModelAgent(Agent):
         return best_action, vlm_json
 
     # ---------------------------------------------------------------------
-    # STEP 1 – prompt VLM, obtain JSON plan list --------------------------
+    # STEP 1 – prompt VLM, obtain JSON plan list --------------------------
     # ---------------------------------------------------------------------
     def check_plans(self, response_json):
         """
@@ -185,20 +187,21 @@ class VLMWorldModelAgent(Agent):
 
     def _query_vlm_for_plans(self, path: str | Path) -> Dict[str, Any]:
         """Send image + instruction; parse & return JSON dict (may be empty)."""
-        # usr_msg = (
-        #     "Generate {num_plans} alternative action plans of {plan_horizon} steps each "
-        #     "following the required JSON format.".format(num_plans=self.num_plans, plan_horizon=self.plan_horizon)
-        # )
-        # frame = self.env.render()
-        # self.add_user_message(frame, usr_msg)
+        usr_msg = (
+            "Generate {num_plans} alternative action plans of {plan_horizon} steps each "
+            "following the required JSON format.".format(num_plans=self.num_plans, plan_horizon=self.plan_horizon)
+        )
+        print(usr_msg)
+        frame = self.env.render()
+        self.add_user_message(frame, usr_msg)
 
         response = self.get_response()  # from parent (auto retry etc.)
-        json_obj = self.clean_response(response, str(path))# or {}
+        json_obj = self.clean_response(response, str(path))
         print("\n\nresponse_json:", json_obj)
         return json_obj # type: ignore[return-value]
 
     # ---------------------------------------------------------------------
-    # STEP 2 – world‑model rollout to score each plan ---------------------
+    # STEP 2 – world‑model rollout to score each plan ---------------------
     # ---------------------------------------------------------------------
 
     def _pick_best_action(self, rgb_obs: np.ndarray, plans: List[List[int]]) -> int:
@@ -235,4 +238,5 @@ class VLMWorldModelAgent(Agent):
             cumulative_reward += reward
             done = out.logits_ends.argmax(dim=-1).item() == 1
             tokens = out.logits_observations.argmax(dim=-1)
+
         return cumulative_reward

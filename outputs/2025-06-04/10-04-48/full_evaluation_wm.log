@@ -1,0 +1,23 @@
+[2025-06-04 10:04:48,916][vlm_wm_eval][INFO] - Starting evaluation
+[2025-06-04 10:04:49,134][vlm_wm_eval][INFO] - Set random seed to 42
+[2025-06-04 10:04:49,137][vlm_wm_eval][INFO] - Loading world model from /mnt/e/Projects/Dissertation/iris on cpu
+[2025-06-04 10:04:50,882][vlm_wm_eval][INFO] - Loading world model from /mnt/e/Projects/Dissertation/iris/checkpoints/last.pt
+[2025-06-04 10:04:51,958][vlm_wm_eval][INFO] - World model loaded successfully
+[2025-06-04 10:04:51,959][vlm_wm_eval][INFO] - Starting evaluation for game: Breakout
+[2025-06-04 10:04:51,960][vlm_wm_eval][INFO] - Running test with model: gpt4o
+[2025-06-04 10:04:51,960][vlm_wm_eval][INFO] - System message: You are a game playing assistant for Atari Breakout. You will be provided with the current game state as an image. Your task is to generate 3 alternative action plans, each consisting of 5 steps. For each plan, explain your reasoning and predict what will happen. The available actions are: 0 (NOOP), 1 (FIRE), 2 (RIGHT), 3 (LEFT). Format your response as a JSON with the following structure: {
+  "reasoning": "your overall reasoning about the game state",
+  "plans": [
+    {
+      "actions": [action1, action2, ..., action5],
+      "explanation": "why this sequence of actions makes sense",
+      "expected_outcome": "what you expect to happen if these actions are executed"
+    }
+    ,...more plans up to 3 total...
+  ]
+}
+
+[2025-06-04 10:04:52,113][atari_gpt.llms][INFO] - Model Key: gpt4o
+[2025-06-04 10:04:52,113][atari_gpt.llms][INFO] - Model Name: gpt-4o-2024-11-20
+[2025-06-04 10:05:26,469][vlm_wm_eval][ERROR] - Error running test for Breakout with model gpt4o: [Errno 2] No such file or directory: 'OPENAI_API_KEY.txt'
+[2025-06-04 10:05:26,470][vlm_wm_eval][INFO] - Evaluation complete

@@ -25,17 +25,18 @@ vlm:
     For each plan, explain your reasoning and predict what will happen.
     The available actions are: 0 (NOOP), 1 (FIRE), 2 (RIGHT), 3 (LEFT).
     Format your response as a JSON with the following structure:
-    {
+    {{
       "reasoning": "your overall reasoning about the game state",
       "plans": [
-        {
+        {{
           "actions": [{action_placeholders}],
           "explanation": "why this sequence of actions makes sense",
           "expected_outcome": "what you expect to happen if these actions are executed"
-        }
+        }}
         {plan_placeholders}
       ]
-    }
+    }}
+
 
 # World Model settings (based on iris)
 defaults:
@@ -44,22 +45,22 @@ defaults:
   - world_model: default
 
 common:
-  device: cuda
+  device: cpu
   sequence_length: ${world_model.max_blocks}
 
-world_model:
-  _target_: iris.src.models.world_model.WorldModel
-  obs_vocab_size: null  # Will be set at runtime
-  act_vocab_size: null  # Will be set at runtime
-  config:
-    max_blocks: 5
-    num_layers: 8
-    num_heads: 8
-    head_dim: 64
-    hidden_dim: 512
-    mlp_dim: 2048
-    vocab_size: null  # Will be set at runtime
-    dropout: 0.1
+# world_model:
+#   _target_: iris.src.models.world_model.WorldModel
+#   obs_vocab_size: null  # Will be set at runtime
+#   act_vocab_size: null  # Will be set at runtime
+#   config:
+#     max_blocks: 5
+#     num_layers: 8
+#     num_heads: 8
+#     head_dim: 64
+#     hidden_dim: 512
+#     mlp_dim: 2048
+#     vocab_size: null  # Will be set at runtime
+#     dropout: 0.1
 
 # Environment settings
 environment:
@@ -84,7 +85,7 @@ environment:
 
 # Paths and integration settings
 paths:
-  atari_gpt_path: "../atari_gpt"
-  iris_path: "../iris"
+  atari_gpt_path: ${hydra:runtime.cwd}/atari_gpt
+  iris_path: ${hydra:runtime.cwd}/iris
   results_dir: "results/"
   checkpoint_dir: "checkpoints/"

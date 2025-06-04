@@ -3,7 +3,7 @@ import time
 import json
 from tqdm import tqdm
 
-from local_llms import Agent
+from llms import Agent
 import cv2
 import csv
 import os
