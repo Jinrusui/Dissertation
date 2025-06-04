@@ -2,3 +2,5 @@ iris/checkpoints/last.pt
 vlm_world_model/src/iris/checkpoints/last.pt
 __pycache__/
 .pytest_cache/
+outputs
+atari_gpt/OPENAI_API_KEY
