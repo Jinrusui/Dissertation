@@ -54,8 +54,8 @@ This dissertation explores the application of Vision Language Models (VLMs) in w
 
 Navigate to the vlm_world_model directory and run the main script:
 ```bash
-cd vlm_world_model
-python src/main.py --config=config/default.yaml
+
+python vlm_world_model/full_evaluation_wm.py
 ```
 
 

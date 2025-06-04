@@ -10,12 +10,19 @@ import torch
 import torch.nn as nn
 # Add this to your test file
 import sys
-sys.path.insert(0, '/mnt/e/Projects/Dissertation/vlm_world_model/src/iris/src')
-
-from .lpips import LPIPS
-from .nets import Encoder, Decoder
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))  # For debugging purposes, to see the current path
+from models.tokenizer.lpips import LPIPS
+from models.tokenizer.nets import Encoder, Decoder
 from dataset import Batch
 from utils import LossWithIntermediateLosses
+
+# sys.path.insert(0, '/mnt/e/Projects/Dissertation/vlm_world_model/src/iris/src')
+
+# from .lpips import LPIPS
+# from .nets import Encoder, Decoder
+# from dataset import Batch
+# from utils import LossWithIntermediateLosses
 
 
 @dataclass

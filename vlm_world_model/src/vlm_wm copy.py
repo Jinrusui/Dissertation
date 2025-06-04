@@ -33,8 +33,6 @@ from iris.src.models.tokenizer.tokenizer import Tokenizer, TokenizerEncoderOutpu
 from iris.src.models.world_model import WorldModel, WorldModelOutput
 from PIL import Image
 import cv2
-import torch.multiprocessing as mp
-from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("vlm_wm_agent")
 
@@ -247,28 +245,25 @@ class VLMWorldModelAgent(Agent):
                 self._num_obs_tokens = init_tokens.shape[1]
                 logger.info(f"Number of observation tokens: {self._num_obs_tokens}")
 
-            # Extract actions from all valid plans
-            plan_actions = []
-            for i, plan in enumerate(plans):
-                if isinstance(plan, dict) and 'actions' in plan:
-                    plan_actions.append((i, plan['actions']))
-                else:
-                    logger.warning(f"Unexpected plan format: {plan}")
-            
-            # Parallelize plan simulations
-            scores = self._simulate_plans_parallel(init_tokens, plan_actions)
-            
-            # Find best plan
             best_score = -float("inf")
             best_first_action = 0
             
-            for (i, actions), score in zip(plan_actions, scores):
-                if score is not None:
+            for i, plan in enumerate(plans):
+                # Extract actions from the plan dictionary
+                if isinstance(plan, dict) and 'actions' in plan:
+                    actions = plan['actions']
+                else:
+                    logger.warning(f"Unexpected plan format: {plan}")
+                    continue
+                
+                try:
+                    score = self._simulate(init_tokens, actions)
                     logger.info(f"Plan {i+1} score: {score}")
                     if score > best_score:
                         best_score, best_first_action = score, actions[0]
-                else:
-                    logger.error(f"Error simulating plan {i+1}")
+                except Exception as e:
+                    logger.error(f"Error simulating plan {i+1}: {str(e)}")
+                    continue
                 
             logger.info(f"Selected best action: {best_first_action} with score: {best_score}")
             return int(best_first_action)
@@ -276,34 +271,6 @@ class VLMWorldModelAgent(Agent):
             logger.error(f"Error in _pick_best_action: {str(e)}")
             # Return NOOP (0) as a safe fallback
             return 0
-    
-    def _simulate_plans_parallel(self, init_tokens: torch.LongTensor, plan_actions: List[Tuple[int, List[int]]]) -> List[Optional[float]]:
-        """Simulate multiple plans in parallel and return their scores."""
-        # Use ThreadPoolExecutor for parallelization
-        with ThreadPoolExecutor(max_workers=min(len(plan_actions), mp.cpu_count())) as executor:
-            # Submit simulation tasks
-            futures = []
-            for _, actions in plan_actions:
-                futures.append(executor.submit(self._simulate_safe, init_tokens, actions))
-            
-            # Collect results
-            scores = []
-            for future in futures:
-                try:
-                    scores.append(future.result())
-                except Exception as e:
-                    logger.error(f"Error in parallel simulation: {str(e)}")
-                    scores.append(None)
-            
-            return scores
-    
-    def _simulate_safe(self, obs_tokens: torch.LongTensor, actions: List[int]) -> Optional[float]:
-        """Wrapper for _simulate that catches exceptions."""
-        try:
-            return self._simulate(obs_tokens, actions)
-        except Exception as e:
-            logger.error(f"Error in simulation: {str(e)}")
-            return None
 
     @torch.no_grad()
     def _simulate(self, obs_tokens: torch.LongTensor, actions: List[int]) -> float:

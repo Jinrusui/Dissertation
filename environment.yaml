@@ -1,3 +1,7 @@
+# Note: PyTorch, Torchvision, and Torchaudio should be installed 
+# using the --extra-index-url for CUDA 11.3 specific builds if
+# conda env create fails to find them or installs CPU versions.
+# Command: pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
 name: vlm_wm # You can change this environment name if you like
 channels:
   - defaults
@@ -105,6 +109,6 @@ dependencies:
     - urllib3==2.2.1
     - wandb==0.12.7
     - zipp==3.19.2 # Often a dependency for importlib-metadata or importlib-resources
-    - torch==1.11.0
-    - torchvision==0.12.0
+    - torch==1.11.0+cu113
+    - torchvision==0.12.0+cu113
     - transformers # No version specified, pip will get the latest or as per other dependencies
