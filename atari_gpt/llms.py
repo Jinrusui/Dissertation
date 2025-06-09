@@ -615,6 +615,7 @@ class Agent():
             )
 
     def delete_messages(self):
+
         print('Deleting Set of Messages...')
 
         if self.model_key == 'gpt4' or self.model_key == 'gpt4o':

@@ -3,6 +3,8 @@ system:
   seed: 42
   log_level: INFO
   log_dir: "logs/"
+  real_time_render: True
+  live_chat: True   # Enable/disable the live chat window alongside rendering
 
 # VLM Planner settings (based on atari_gpt)
 vlm:
@@ -10,78 +12,39 @@ vlm:
   model_key: "gpt4o"  # Options: gpt4, gpt4o, claude, gemini, qwen
   model_name: "gpt-4o"  # Specific model name
   temperature: 1.0
+  use_world_model: True
   
   # Planning configuration
-  num_plans: 3        # Number of alternative plans to generate
-  plan_horizon: 5     # How many steps ahead to plan
+  num_plans: 3       # Number of alternative plans to generate
+  plan_horizon: 5   # How many steps ahead to plan
   action_placeholders: "action1, action2, ..., action{plan_horizon}"  # Will be formatted at runtime
   plan_placeholders: ",...more plans up to {num_plans} total..."      # Will be formatted at runtime
 
-  # Prompt settings
-  system_message: >
-    You are a game playing assistant for Atari Breakout.
-    You will be provided with the current game state as an image.
-    Your task is to generate {num_plans} alternative action plans, each consisting of {plan_horizon} steps.
-    For each plan, explain your reasoning and predict what will happen.
-    The available actions are: 0 (NOOP), 1 (FIRE), 2 (RIGHT), 3 (LEFT).
-    Format your response as a JSON with the following structure:
-    {{
-      "reasoning": "your overall reasoning about the game state",
-      "plans": [
-        {{
-          "actions": [{action_placeholders}],
-          "explanation": "why this sequence of actions makes sense",
-          "expected_outcome": "what you expect to happen if these actions are executed"
-        }}
-        {plan_placeholders}
-      ]
-    }}
+  # Action buffer configuration
+  use_action_buffer: True   # Enable/disable the action buffer
+  action_buffer_size: 10    # Maximum number of plans to store in the buffer
+  action_buffer_threshold: 0.0  # Minimum score required for a plan to be stored
 
+  system_prompt: >
+    ${sys_prompt.system_prompt}
 
-# World Model settings (based on iris)
 defaults:
   - _self_
   - tokenizer: default
   - world_model: default
+  - sys_prompt: Breakout
+
 
 common:
   device: cpu
   sequence_length: ${world_model.max_blocks}
 
-# world_model:
-#   _target_: iris.src.models.world_model.WorldModel
-#   obs_vocab_size: null  # Will be set at runtime
-#   act_vocab_size: null  # Will be set at runtime
-#   config:
-#     max_blocks: 5
-#     num_layers: 8
-#     num_heads: 8
-#     head_dim: 64
-#     hidden_dim: 512
-#     mlp_dim: 2048
-#     vocab_size: null  # Will be set at runtime
-#     dropout: 0.1
 
 # Environment settings
 environment:
   name: "Breakout"     # Gym environment name
-  # render_mode: "rgb_array"    # Rendering mode
-  # frame_skip: 4               # Number of frames to skip between actions
-  # max_episode_steps: 10000    # Maximum number of steps per episode
-  
-  # # Frame processing
-  # frame_size: [84, 84]        # Size to resize frames to
-  # frame_stack: 4              # Number of frames to stack
-  # grayscale: false            # Whether to convert frames to grayscale
-  # normalize: true             # Whether to normalize pixel values
+  num_timesteps: 1000  # Maximum number of timesteps to run the environment for
 
-# # Action Buffer settings
-# action_buffer:
-#   plan_selection: "max_reward"  # Options: max_reward, max_expected_reward
-#   replan_threshold: 0.5         # Threshold for when to trigger replanning
-#   execution_strategy: "step_by_step"  # Options: step_by_step, full_plan
-#   confidence_threshold: 0.7     # Minimum confidence to execute a plan without replanning
-#   max_replans_per_step: 2       # Maximum number of times to replan at each step
 
 # Paths and integration settings
 paths:
@@ -89,3 +52,7 @@ paths:
   iris_path: ${hydra:runtime.cwd}/iris
   results_dir: "results/"
   checkpoint_dir: "checkpoints/"
+
+# Evaluation settings
+evaluation:
+  models: ["gpt4o"]  # List of models to evaluate, use ["all"] for all models

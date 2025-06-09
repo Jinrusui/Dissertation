@@ -2,7 +2,7 @@
 ====================
 A drop‑in replacement for the existing *Agent* class that:
 1.  Lets an image‑VLM (GPT‑4o / Gemini / Claude‑Vision …) **propose multiple multi‑step action plans**.
-2.  Evaluates every plan inside an **offline world‑model** (tokenizer + world_model) to obtain cumulative reward.
+2.  Evaluates every plan inside an **offline world‑model** (tokenizer + world_model) to obtain cumulative reward.
 3.  Selects the plan with the best predicted reward and returns **its first action** for real‑environment execution.
 
 It keeps **exactly** the same public interface as the old `Agent` used in *run_experiments.py*:
@@ -10,7 +10,6 @@ It keeps **exactly** the same public interface as the old `Agent` used in *run_e
 agent = VLMWorldModelAgent(model_name=..., model="gpt4o", system_message=..., env=env,
                            tokenizer=tok, world_model=wm, device="cuda:0")
 action, full_response = agent.generate_response(path)   # unchanged call‑site
-```
 – `full_response` is now the raw JSON produced by the VLM.
 
 The new agent subclasses the original `Agent` and **only overrides the upper‑level call‑chain** so other methods in *run_experiments* stay intact.
@@ -35,6 +34,7 @@ from PIL import Image
 import cv2
 import torch.multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor
+from vlm_world_model.src.action_buffer import ActionBuffer
 
 logger = logging.getLogger("vlm_wm_agent")
 
@@ -78,6 +78,7 @@ class VLMWorldModelAgent(Agent):
     plan_horizon : int  – how many steps each plan should contain.
     num_plans : int  – how many alternative plans VLM must propose.
     device : str | torch.device  – device for world‑model inference.
+    action_buffer : ActionBuffer | None – buffer to store validated plans
     """
 
     # ---------------------------------------------------------------------
@@ -92,6 +93,8 @@ class VLMWorldModelAgent(Agent):
         plan_horizon: int = 5,
         num_plans: int = 3,
         device: str | torch.device = "cuda:0",
+        use_world_model: bool = True,
+        action_buffer: ActionBuffer | None = None,
         **agent_kwargs: Any,
     ) -> None:
         super().__init__(**agent_kwargs)  # initialise LLM client etc.
@@ -102,7 +105,9 @@ class VLMWorldModelAgent(Agent):
 
         self.plan_horizon = plan_horizon
         self.num_plans = num_plans
-
+        self.use_world_model = use_world_model
+        self.use_action_buffer = action_buffer is not None
+        self.action_buffer = action_buffer or ActionBuffer()
         self._num_obs_tokens: int | None = None  # cache after first encode
         print("VLMWorldModelAgent initialized!!!!!")
     # ---------------------------------------------------------------------
@@ -115,6 +120,20 @@ class VLMWorldModelAgent(Agent):
         * path is still required because run_experiments writes raw completions there.
         * We store VLM raw output exactly like parent; then we compute best‑plan action.
         """
+        # First check if there's an action in the buffer
+        buffered_action = self.action_buffer.get_action()
+        if buffered_action is not None:
+            logger.info(f"Using action {buffered_action} from buffer")
+            # Create a minimal response to maintain API compatibility
+            vlm_json = {
+                "reasoning": "Action taken from pre-validated plan in buffer",
+                "action": buffered_action,
+                "from_buffer": True,
+                "buffer_status": self.action_buffer.get_buffer_status()
+            }
+            return buffered_action, vlm_json
+        
+        # If buffer is empty, generate new plans
         # === 1. Ask VLM for plans ===================================================
         vlm_json = self._query_vlm_for_plans(path)
         plans = self.check_plans(vlm_json)
@@ -124,7 +143,32 @@ class VLMWorldModelAgent(Agent):
 
         # === 2. Evaluate via world‑model ============================================
         obs_rgb = self.env.render()
-        best_action = self._pick_best_action(obs_rgb, plans)
+        best_action, best_plan_idx, plan_scores = self._pick_best_action_and_plan(obs_rgb, plans)
+        
+        # === 3. Store the best plan in the buffer =================================
+        if self.use_action_buffer and plans:
+            # Create validated plans with scores
+            validated_plans = []
+            for i, score in enumerate(plan_scores):
+                if score is not None and i < len(plans):
+                    plan_actions = [int(a) for a in plans[i]["actions"]]
+                    validated_plans.append((score, plan_actions))
+            
+            if validated_plans:
+                # Sort plans by score to find the best one
+                validated_plans.sort(key=lambda x: x[0], reverse=True)
+                best_score, best_plan = validated_plans[0]
+                
+                # Get the remaining actions of the best plan
+                remaining_plan = best_plan[1:]
+                
+                if remaining_plan:
+                    # Set the single best plan in the buffer, replacing any old one
+                    self.action_buffer.set_plan(remaining_plan)
+        
+        # Add buffer status to the response
+        vlm_json["buffer_status"] = self.action_buffer.get_buffer_status()
+        
         return best_action, vlm_json
 
     # ---------------------------------------------------------------------
@@ -171,11 +215,11 @@ class VLMWorldModelAgent(Agent):
                                 logger.warning(f"Action {ia} in plan {idx} is out of valid range (0~{self.env.action_space.n-1})")
                                 valid = False
                                 break
-                        # Optionally check explanations/outcomes exist and are strings
-                        if not (isinstance(plan.get("explanation"), str) and isinstance(plan.get("expected_outcome"), str)):
-                            logger.warning(f"Plan {idx} missing explanation or expected_outcome as strings")
-                            valid = False
-                            break
+                        # # Optionally check explanations/outcomes exist and are strings
+                        # if not (isinstance(plan.get("explanation"), str) and isinstance(plan.get("expected_outcome"), str)):
+                        #     logger.warning(f"Plan {idx} missing explanation or expected_outcome as strings")
+                        #     valid = False
+                        #     break
                     if valid:
                         return plans
                     # If we broke out due to invalid, retry below
@@ -188,11 +232,11 @@ class VLMWorldModelAgent(Agent):
                 f"Your output format is invalid. Please provide exactly {self.num_plans} plans, "
                 f"each with {self.plan_horizon} integer actions in a list under 'actions'. "
                 f"All actions must be between 0 and {self.env.action_space.n-1}. "
-                f"Each plan must include an 'explanation' and 'expected_outcome' as strings. "
+                f"Each plan must include an 'expected_outcome' as strings. "
                 "Format: {"
                 '"reasoning": "...",'
                 '"plans": ['
-                '{"actions": [0, 1, ...], "explanation": "...", "expected_outcome": "..."}, ...'
+                '{"actions": [0, 1, ...], "expected_outcome": "..."}, ...'
                 "]}"
             )
             self.add_user_message(user_msg=error_message)
@@ -211,10 +255,11 @@ class VLMWorldModelAgent(Agent):
     def _query_vlm_for_plans(self, path: str | Path) -> Dict[str, Any]:
         """Send image + instruction; parse & return JSON dict (may be empty)."""
         usr_msg = (
+            "Analyze the current game frame, focus on ball and paddle position, and history of the message, decide the best action to take."
             "Generate {num_plans} alternative action plans of {plan_horizon} steps each "
             "following the required JSON format.".format(num_plans=self.num_plans, plan_horizon=self.plan_horizon)
         )
-        print(usr_msg)
+        #print(usr_msg)
         frame = self.env.render()
         self.add_user_message(frame, usr_msg)
 
@@ -227,56 +272,65 @@ class VLMWorldModelAgent(Agent):
     # STEP 2 – world‑model rollout to score each plan ---------------------
     # ---------------------------------------------------------------------
 
-    def _pick_best_action(self, rgb_obs: Union[np.ndarray, Image.Image], plans: List[Dict[str, Any]]) -> int:
-        """Return first action of plan with highest predicted cumulative reward."""
+    def _pick_best_action_and_plan(self, rgb_obs: Union[np.ndarray, Image.Image], plans: List[Dict[str, Any]]) -> Tuple[int, int, List[float | None]]:
+        """Return first action of plan with highest predicted cumulative reward, along with plan index and all scores."""
         try:
-            # Convert PIL Image to numpy array if needed
-            if hasattr(rgb_obs, 'convert'):  # Check if it's a PIL Image
-                rgb_obs = np.array(rgb_obs)
-            
-            # Resize observation if needed to match tokenizer's expected input size
-            if rgb_obs.shape[0] != 64 or rgb_obs.shape[1] != 64:
-                logger.info(f"Resizing observation from {rgb_obs.shape} to 64x64")
-                rgb_obs = cv2.resize(rgb_obs, (64, 64))
-            
-            obs_tensor = _rgb_to_bchw(rgb_obs, self.device)
-            enc: TokenizerEncoderOutput = self.tokenizer.encode(obs_tensor, should_preprocess=True)
-            init_tokens = enc.tokens  # [1,K]
-            
-            if self._num_obs_tokens is None:
-                self._num_obs_tokens = init_tokens.shape[1]
-                logger.info(f"Number of observation tokens: {self._num_obs_tokens}")
-
-            # Extract actions from all valid plans
-            plan_actions = []
-            for i, plan in enumerate(plans):
-                if isinstance(plan, dict) and 'actions' in plan:
-                    plan_actions.append((i, plan['actions']))
-                else:
-                    logger.warning(f"Unexpected plan format: {plan}")
-            
-            # Parallelize plan simulations
-            scores = self._simulate_plans_parallel(init_tokens, plan_actions)
-            
-            # Find best plan
-            best_score = -float("inf")
-            best_first_action = 0
-            
-            for (i, actions), score in zip(plan_actions, scores):
-                if score is not None:
-                    logger.info(f"Plan {i+1} score: {score}")
-                    if score > best_score:
-                        best_score, best_first_action = score, actions[0]
-                else:
-                    logger.error(f"Error simulating plan {i+1}")
+            if not self.use_world_model:
+                return plans[0]['actions'][0], 0, [None] * len(plans)
+            else:
+                # Convert PIL Image to numpy array if needed
+                if hasattr(rgb_obs, 'convert'):  # Check if it's a PIL Image
+                    rgb_obs = np.array(rgb_obs)
                 
-            logger.info(f"Selected best action: {best_first_action} with score: {best_score}")
-            return int(best_first_action)
+                # Resize observation if needed to match tokenizer's expected input size
+                if rgb_obs.shape[0] != 64 or rgb_obs.shape[1] != 64:
+                    logger.info(f"Resizing observation from {rgb_obs.shape} to 64x64")
+                    rgb_obs = cv2.resize(rgb_obs, (64, 64))
+                
+                obs_tensor = _rgb_to_bchw(rgb_obs, self.device)
+                enc: TokenizerEncoderOutput = self.tokenizer.encode(obs_tensor, should_preprocess=True)
+                init_tokens = enc.tokens  # [1,K]
+                
+                if self._num_obs_tokens is None:
+                    self._num_obs_tokens = init_tokens.shape[1]
+                
+                # Parse actions from each plan
+                plan_actions = []
+                for idx, plan in enumerate(plans):
+                    try:
+                        actions = [int(a) for a in plan['actions']]
+                        plan_actions.append((idx, actions))
+                    except (ValueError, KeyError) as e:
+                        logger.error(f"Error parsing actions from plan {idx}: {e}")
+                
+                # Simulate all plans in parallel
+                rewards = self._simulate_plans_parallel(init_tokens, plan_actions)
+                
+                # Find best plan
+                best_reward = float('-inf')
+                best_idx = 0
+                for idx, reward in enumerate(rewards):
+                    if reward is not None and reward > best_reward:
+                        best_reward = reward
+                        best_idx = idx
+                
+                if best_idx < len(plan_actions):
+                    plan_idx, actions = plan_actions[best_idx]
+                    logger.info(f"Best plan {plan_idx} with reward {best_reward:.2f}")
+                    return actions[0], plan_idx, rewards
+                else:
+                    logger.warning(f"Invalid best_idx {best_idx}, using plan 0")
+                    return plans[0]['actions'][0], 0, rewards
+                
         except Exception as e:
-            logger.error(f"Error in _pick_best_action: {str(e)}")
-            # Return NOOP (0) as a safe fallback
-            return 0
-    
+            logger.error(f"Error in _pick_best_action_and_plan: {e}")
+            return plans[0]['actions'][0], 0, [None] * len(plans)
+
+    def _pick_best_action(self, rgb_obs: Union[np.ndarray, Image.Image], plans: List[Dict[str, Any]]) -> int:
+        """Legacy method for backward compatibility."""
+        action, _, _ = self._pick_best_action_and_plan(rgb_obs, plans)
+        return action
+
     def _simulate_plans_parallel(self, init_tokens: torch.LongTensor, plan_actions: List[Tuple[int, List[int]]]) -> List[Optional[float]]:
         """Simulate multiple plans in parallel and return their scores."""
         # Use ThreadPoolExecutor for parallelization

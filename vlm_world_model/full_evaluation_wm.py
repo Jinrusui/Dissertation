@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 import json
 import logging
 import os
@@ -109,7 +108,6 @@ def main(cfg: DictConfig):
     
     # Load world model
     try:
-        
         iris_path = cfg.paths.iris_path
         device = cfg.common.device
         
@@ -120,6 +118,11 @@ def main(cfg: DictConfig):
         # Get plan parameters from config
         plan_horizon = cfg.vlm.plan_horizon
         num_plans = cfg.vlm.num_plans
+        
+        # Get action buffer parameters from config
+        use_action_buffer = cfg.vlm.get('use_action_buffer', True)
+        action_buffer_size = cfg.vlm.get('action_buffer_size', 10)
+        action_buffer_threshold = cfg.vlm.get('action_buffer_threshold', 0.0)
         
     except Exception as e:
         logger.error(f"Error loading world model: {str(e)}")
@@ -142,16 +145,20 @@ def main(cfg: DictConfig):
         try:
             logger.info(f"Running test with model: {model_key}")
             
-            # Create system message with properly formatted placeholders
-            action_placeholders = cfg.vlm.action_placeholders.format(plan_horizon=plan_horizon)
-            plan_placeholders = cfg.vlm.plan_placeholders.format(num_plans=num_plans)
-            system_message = cfg.vlm.system_message.format(
-                num_plans=num_plans,
-                plan_horizon=plan_horizon,
-                action_placeholders=action_placeholders,
-                plan_placeholders=plan_placeholders
-            )
-            logger.info(f"System message: {system_message}")
+            # Get system prompt directly from config
+            system_message = cfg.vlm.system_prompt
+            logger.info(f"Using system prompt from config")
+            
+            # Get rendering settings from config
+            real_time_render = cfg.system.get('real_time_render', False)
+            live_chat = cfg.system.get('live_chat', False)
+            
+            # If live-chat is enabled, make sure real_time_render is also enabled
+            if live_chat:
+                real_time_render = True
+                
+            logger.info(f"Real-time rendering: {real_time_render}, Live chat: {live_chat}")
+            
             # Run the evaluation with world model
             results = RunWithWorldModel(
                 env_name=env_name,
@@ -162,12 +169,21 @@ def main(cfg: DictConfig):
                 world_model=world_model,
                 plan_horizon=plan_horizon,
                 num_plans=num_plans,
-                device=device
+                device=device,
+                real_time_render=real_time_render,
+                use_world_model=cfg.vlm.get('use_world_model', True),
+                live_chat=live_chat,
+                num_timesteps=cfg.environment.get('num_timesteps', 100),
+                use_action_buffer=use_action_buffer,
+                action_buffer_size=action_buffer_size,
+                action_buffer_threshold=action_buffer_threshold
             )
             
             logger.info(f"Completed test for model: {model_key}")
         except Exception as e:
             logger.error(f"Error running test for {env_name} with model {model_key}: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             continue
     
     logger.info("Evaluation complete")
