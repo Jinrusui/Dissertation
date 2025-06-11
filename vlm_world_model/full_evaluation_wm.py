@@ -147,6 +147,14 @@ def main(cfg: DictConfig):
             
             # Get system prompt directly from config
             system_message = cfg.vlm.system_prompt
+            action_placeholders = cfg.vlm.action_placeholders.format(plan_horizon=plan_horizon)
+            plan_placeholders = cfg.vlm.plan_placeholders.format(num_plans=num_plans)
+            system_message = system_message.format(
+                num_plans=num_plans,
+                plan_horizon=plan_horizon,
+                action_placeholders=action_placeholders,
+                plan_placeholders=plan_placeholders,
+            )
             logger.info(f"Using system prompt from config")
             
             # Get rendering settings from config

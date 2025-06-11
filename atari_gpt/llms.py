@@ -551,91 +551,71 @@ class Agent():
                 pass
 
     def add_assistant_message(self, demo_str=None):
-
-        if self.model_key =='gpt4' or self.model_key =='gpt4o':
+        if self.model_key in ['gpt4', 'gpt4o']:
             if demo_str is not None:
-                self.messages.append({"role": "assistant", "content": self.response})
-                demo_str = None
+                self.messages.append({"role": "assistant", "content": demo_str})
                 return
-            
+
             if self.response is not None:
-                self.messages.append({"role": "assistant", "content": self.response})
-        
+                try:
+                    content = self.response.choices[0].message.content
+                    self.messages.append({"role": "assistant", "content": content})
+                except (AttributeError, IndexError):
+                    logger.warning("Could not extract content from OpenAI response, skipping assistant message.")
+
         elif self.model_key == 'claude':
             if demo_str is not None:
-                self.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": demo_str},
-                        ]
-                    }
-                )
-                demo_str = None
+                self.messages.append({"role": "assistant", "content": [{"type": "text", "text": demo_str}]})
                 return
 
             if self.response is not None:
-                self.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": self.response.content[0].text},
-                        ]
-                    }
-                )
+                try:
+                    content = self.response.content[0].text
+                    self.messages.append({"role": "assistant", "content": [{"type": "text", "text": content}]})
+                except (AttributeError, IndexError):
+                    logger.warning("Could not extract content from Anthropic response, skipping assistant message.")
 
-        elif self.model_key =='gemini':
+        elif self.model_key == 'gemini':
             if demo_str is not None:
-                self.messages.append(
-                    {
-                        "role": "model",
-                        "parts": demo_str
-                    }
-                )
-                demo_str = None
+                self.messages.append({"role": "model", "parts": [{"text": demo_str}]})
                 return
 
             if self.response is not None:
-                assistant_msg = self.response.text
-                self.messages.append(
-                    {
-                        "role": "model",
-                        "parts": assistant_msg
-                    }
-                )
-
+                try:
+                    # Gemini response object might not have .text if the prompt was blocked.
+                    assistant_msg = self.response.text
+                    self.messages.append({"role": "model", "parts": [{"text": assistant_msg}]})
+                except AttributeError:
+                    logger.warning("Could not extract text from Gemini response, skipping assistant message.")
         else:
-            self.messages.append(
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": ' '},
-                    ]
-                }
-            )
+            # Fallback for unknown models, though it might not be useful
+            self.messages.append({"role": "assistant", "content": " "})
 
-    def delete_messages(self):
+    def manage_context_window(self, max_turns: int = 3):
+        """
+        Manages the conversation history to prevent it from growing indefinitely.
+        Keeps the system prompt and the most recent N conversation turns.
 
-        print('Deleting Set of Messages...')
+        :param max_turns: The number of recent user/assistant turns to keep.
+        """
+        # A turn consists of one user message and one assistant message.
+        max_convo_messages = max_turns * 2
 
-        if self.model_key == 'gpt4' or self.model_key == 'gpt4o':
-            message_len = 9
-        else:
-            message_len = 8
+        # Ensure there is a system message to preserve
+        if not self.messages or self.messages[0].get("role") != "system":
+            # For models like claude/gemini that might not have an explicit system message in the list
+            # We just trim the oldest messages.
+            if len(self.messages) > max_convo_messages:
+                self.messages = self.messages[-max_convo_messages:]
+            return
 
-        
-        if len(self.messages) >= message_len:
+        # If there is a system message, preserve it
+        # Check if the total number of messages exceeds the limit (1 system prompt + N conversation messages)
+        if len(self.messages) > 1 + max_convo_messages:
+            # print(f"Managing context window: trimming to system prompt and last {max_turns} turns.")
+            
+            # Create the new list of messages
+            new_messages = [self.messages[0]] + self.messages[-max_convo_messages:]
+            
+            self.messages = new_messages
 
-            if self.messages[0]['role'] == 'system':
-                # Delete user message
-                value = self.messages.pop(1)
-
-                # Delete Assistant message
-                value = self.messages.pop(1)
-
-            else:
-                # Delete user message
-                self.messages.pop(0)
-
-                # Delete Assistant message
-                self.messages.pop(0)

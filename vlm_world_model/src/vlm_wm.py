@@ -50,7 +50,14 @@ def _rgb_to_bchw(rgb: np.ndarray, device: torch.device) -> torch.Tensor:
     # Handle PIL Image
     if hasattr(rgb, 'convert'):  # Check if it's a PIL Image
         rgb = np.array(rgb)
-        
+    
+    # Fast path for most common case (HWC uint8)
+    if len(rgb.shape) == 3 and rgb.shape[2] == 3 and rgb.dtype == np.uint8:
+        # Avoid unnecessary copies by using torch.as_tensor instead of from_numpy
+        tensor = torch.as_tensor(rgb, device='cpu').permute(2, 0, 1).float().mul_(1.0/255.0).unsqueeze(0)
+        return tensor.to(device, non_blocking=True)
+    
+    # Handle other cases
     if hasattr(rgb, 'dtype') and rgb.dtype != np.uint8:
         # If we have float values, ensure they're in [0,1] and convert to uint8
         rgb = (rgb.clip(0, 1) * 255).astype(np.uint8)
@@ -58,14 +65,14 @@ def _rgb_to_bchw(rgb: np.ndarray, device: torch.device) -> torch.Tensor:
     # Handle different channel arrangements
     if len(rgb.shape) == 3 and rgb.shape[2] == 3:
         # Standard HWC format
-        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255.0).unsqueeze(0)
+        tensor = torch.as_tensor(rgb, device='cpu').permute(2, 0, 1).float().mul_(1.0/255.0).unsqueeze(0)
     elif len(rgb.shape) == 3 and rgb.shape[0] == 3:
         # Already in CHW format
-        tensor = torch.from_numpy(rgb).float().div(255.0).unsqueeze(0)
+        tensor = torch.as_tensor(rgb, device='cpu').float().mul_(1.0/255.0).unsqueeze(0)
     else:
         raise ValueError(f"Unexpected image shape: {rgb.shape}")
     
-    return tensor.to(device)
+    return tensor.to(device, non_blocking=True)
 
 
 class VLMWorldModelAgent(Agent):
@@ -120,10 +127,9 @@ class VLMWorldModelAgent(Agent):
         * path is still required because run_experiments writes raw completions there.
         * We store VLM raw output exactly like parent; then we compute best‑plan action.
         """
-        # First check if there's an action in the buffer
+        # First check if there's an action in the buffer (fastest path)
         buffered_action = self.action_buffer.get_action()
         if buffered_action is not None:
-            logger.info(f"Using action {buffered_action} from buffer")
             # Create a minimal response to maintain API compatibility
             vlm_json = {
                 "reasoning": "Action taken from pre-validated plan in buffer",
@@ -138,33 +144,35 @@ class VLMWorldModelAgent(Agent):
         vlm_json = self._query_vlm_for_plans(path)
         plans = self.check_plans(vlm_json)
         if not plans:
-            logger.warning("No valid plans parsed – fallback to NOOP")
-            return 0, vlm_json
+            return 0, vlm_json  # Fallback to NOOP
 
         # === 2. Evaluate via world‑model ============================================
+        if not self.use_world_model:
+            # Fast path when world model is disabled
+            best_action = int(plans[0]['actions'][0])
+            vlm_json["buffer_status"] = self.action_buffer.get_buffer_status()
+            return best_action, vlm_json
+            
+        # Get observation and evaluate plans
         obs_rgb = self.env.render()
         best_action, best_plan_idx, plan_scores = self._pick_best_action_and_plan(obs_rgb, plans)
         
         # === 3. Store the best plan in the buffer =================================
-        if self.use_action_buffer and plans:
-            # Create validated plans with scores
-            validated_plans = []
-            for i, score in enumerate(plan_scores):
-                if score is not None and i < len(plans):
-                    plan_actions = [int(a) for a in plans[i]["actions"]]
-                    validated_plans.append((score, plan_actions))
+        if self.use_action_buffer and plan_scores:
+            # Find best valid plan
+            best_score = float('-inf')
+            best_plan_actions = None
             
-            if validated_plans:
-                # Sort plans by score to find the best one
-                validated_plans.sort(key=lambda x: x[0], reverse=True)
-                best_score, best_plan = validated_plans[0]
-                
-                # Get the remaining actions of the best plan
-                remaining_plan = best_plan[1:]
-                
-                if remaining_plan:
-                    # Set the single best plan in the buffer, replacing any old one
-                    self.action_buffer.set_plan(remaining_plan)
+            for i, score in enumerate(plan_scores):
+                if score is not None and i < len(plans) and score > best_score:
+                    best_score = score
+                    best_plan_actions = [int(a) for a in plans[i]["actions"]]
+            
+            # Store remaining actions from best plan
+            if best_plan_actions:
+                remaining_actions = best_plan_actions[1:]
+                if remaining_actions:
+                    self.action_buffer.set_plan(remaining_actions)
         
         # Add buffer status to the response
         vlm_json["buffer_status"] = self.action_buffer.get_buffer_status()
@@ -251,22 +259,55 @@ class VLMWorldModelAgent(Agent):
         logger.error("Failed to get valid plans after multiple attempts, returning None")
         return None
 
-
+    
     def _query_vlm_for_plans(self, path: str | Path) -> Dict[str, Any]:
         """Send image + instruction; parse & return JSON dict (may be empty)."""
-        usr_msg = (
-            "Analyze the current game frame, focus on ball and paddle position, and history of the message, decide the best action to take."
-            "Generate {num_plans} alternative action plans of {plan_horizon} steps each "
-            "following the required JSON format.".format(num_plans=self.num_plans, plan_horizon=self.plan_horizon)
-        )
-        #print(usr_msg)
+        usr_msg = f"Analyze the current and historical game frames, decide the best action. Generate {self.num_plans} action plans of {self.plan_horizon} steps each in JSON format."
+        
         frame = self.env.render()
         self.add_user_message(frame, usr_msg)
+        response = self.get_response()  # from parent (auto retry etc.)
+        #delete the usr_msg from messages but keep the frame
+        self.delete_usr_message(usr_msg)
+
+        if self.messages and self.messages[-1].get('role') == 'user' and self.messages[-1].get('content') == usr_msg:
+            self.messages.pop()
+
+        
+        # Print the message history that will be sent to the VLM
+
+        print("\n=== VLM Input Messages ===")
+        for i, msg in enumerate(self.messages):
+            role = msg.get('role', 'unknown')
+            print(f"\nMessage {i+1} ({role}):")
+            
+            # Handle different message formats for different models
+            if 'content' in msg:
+                if isinstance(msg['content'], str):
+                    print(f"  Content: {msg['content']}")
+                elif isinstance(msg['content'], list):
+                    for item in msg['content']:
+                        if isinstance(item, dict):
+                            if item.get('type') == 'text':
+                                print(f"  Text: {item.get('text', '')}")
+                            elif item.get('type') == 'image_url':
+                                print("  Image: [image data]")
+                        else:
+                            print(f"  Content item: {item}")
+            elif 'parts' in msg:
+                for part in msg['parts']:
+                    if 'text' in part:
+                        print(f"  Text: {part['text']}")
+                    elif 'mime_type' in part and 'data' in part:
+                        print(f"  Image: [image data]")
+            print("-" * 50)
 
         response = self.get_response()  # from parent (auto retry etc.)
-        json_obj = self.clean_response(response, str(path))
-        print("\n\nresponse_json:", json_obj)
-        return json_obj # type: ignore[return-value]
+        # if response:
+        #     self.add_assistant_message()
+
+
+        return self.clean_response(response, str(path)) # type: ignore[return-value]
 
     # ---------------------------------------------------------------------
     # STEP 2 – world‑model rollout to score each plan ---------------------
@@ -276,55 +317,62 @@ class VLMWorldModelAgent(Agent):
         """Return first action of plan with highest predicted cumulative reward, along with plan index and all scores."""
         try:
             if not self.use_world_model:
-                return plans[0]['actions'][0], 0, [None] * len(plans)
-            else:
-                # Convert PIL Image to numpy array if needed
-                if hasattr(rgb_obs, 'convert'):  # Check if it's a PIL Image
-                    rgb_obs = np.array(rgb_obs)
-                
-                # Resize observation if needed to match tokenizer's expected input size
-                if rgb_obs.shape[0] != 64 or rgb_obs.shape[1] != 64:
-                    logger.info(f"Resizing observation from {rgb_obs.shape} to 64x64")
-                    rgb_obs = cv2.resize(rgb_obs, (64, 64))
-                
-                obs_tensor = _rgb_to_bchw(rgb_obs, self.device)
-                enc: TokenizerEncoderOutput = self.tokenizer.encode(obs_tensor, should_preprocess=True)
+                return int(plans[0]['actions'][0]), 0, [None] * len(plans)
+            
+            # Convert PIL Image to numpy array if needed
+            if hasattr(rgb_obs, 'convert'):
+                rgb_obs = np.array(rgb_obs)
+            
+            # Fast resize using OpenCV
+            if rgb_obs.shape[0] != 64 or rgb_obs.shape[1] != 64:
+                rgb_obs = cv2.resize(rgb_obs, (64, 64), interpolation=cv2.INTER_AREA)
+            
+            # Convert to tensor and encode
+            obs_tensor = _rgb_to_bchw(rgb_obs, self.device)
+            with torch.no_grad():
+                enc = self.tokenizer.encode(obs_tensor, should_preprocess=True)
                 init_tokens = enc.tokens  # [1,K]
-                
-                if self._num_obs_tokens is None:
-                    self._num_obs_tokens = init_tokens.shape[1]
-                
-                # Parse actions from each plan
-                plan_actions = []
-                for idx, plan in enumerate(plans):
-                    try:
-                        actions = [int(a) for a in plan['actions']]
+            
+            # Cache token count if not already set
+            if self._num_obs_tokens is None:
+                self._num_obs_tokens = init_tokens.shape[1]
+            
+            # Parse actions from plans - do this more efficiently
+            plan_actions = []
+            for idx, plan in enumerate(plans):
+                try:
+                    # Convert actions to integers directly
+                    actions = [int(a) for a in plan.get('actions', [])]
+                    if len(actions) == self.plan_horizon:
                         plan_actions.append((idx, actions))
-                    except (ValueError, KeyError) as e:
-                        logger.error(f"Error parsing actions from plan {idx}: {e}")
+                except (ValueError, TypeError):
+                    continue
+            
+            # If no valid plans, return default
+            if not plan_actions:
+                return int(plans[0]['actions'][0]), 0, [None] * len(plans)
                 
-                # Simulate all plans in parallel
-                rewards = self._simulate_plans_parallel(init_tokens, plan_actions)
-                
-                # Find best plan
-                best_reward = float('-inf')
-                best_idx = 0
-                for idx, reward in enumerate(rewards):
-                    if reward is not None and reward > best_reward:
-                        best_reward = reward
-                        best_idx = idx
-                
-                if best_idx < len(plan_actions):
-                    plan_idx, actions = plan_actions[best_idx]
-                    logger.info(f"Best plan {plan_idx} with reward {best_reward:.2f}")
-                    return actions[0], plan_idx, rewards
-                else:
-                    logger.warning(f"Invalid best_idx {best_idx}, using plan 0")
-                    return plans[0]['actions'][0], 0, rewards
+            # Simulate all plans in parallel
+            rewards = self._simulate_plans_parallel(init_tokens, plan_actions)
+            
+            # Find best plan more efficiently
+            best_reward = float('-inf')
+            best_idx = 0
+            best_plan_idx = plan_actions[0][0]  # Default to first plan
+            
+            for i, (plan_idx, actions) in enumerate(plan_actions):
+                reward = rewards[i]
+                if reward is not None and reward > best_reward:
+                    best_reward = reward
+                    best_idx = i
+                    best_plan_idx = plan_idx
+            
+            # Return the best action
+            return int(plans[best_plan_idx]['actions'][0]), best_plan_idx, rewards
                 
         except Exception as e:
-            logger.error(f"Error in _pick_best_action_and_plan: {e}")
-            return plans[0]['actions'][0], 0, [None] * len(plans)
+            # Fallback to first plan on error
+            return int(plans[0]['actions'][0]), 0, [None] * len(plans)
 
     def _pick_best_action(self, rgb_obs: Union[np.ndarray, Image.Image], plans: List[Dict[str, Any]]) -> int:
         """Legacy method for backward compatibility."""
@@ -333,23 +381,18 @@ class VLMWorldModelAgent(Agent):
 
     def _simulate_plans_parallel(self, init_tokens: torch.LongTensor, plan_actions: List[Tuple[int, List[int]]]) -> List[Optional[float]]:
         """Simulate multiple plans in parallel and return their scores."""
-        # Use ThreadPoolExecutor for parallelization
-        with ThreadPoolExecutor(max_workers=min(len(plan_actions), mp.cpu_count())) as executor:
-            # Submit simulation tasks
-            futures = []
-            for _, actions in plan_actions:
-                futures.append(executor.submit(self._simulate_safe, init_tokens, actions))
+        # Optimize for small number of plans - avoid overhead of thread creation for few plans
+        if len(plan_actions) <= 2:
+            return [self._simulate_safe(init_tokens, actions) for _, actions in plan_actions]
+        
+        # For more plans, use ThreadPoolExecutor with optimized worker count
+        # Use at most 4 workers to prevent GPU thrashing
+        with ThreadPoolExecutor(max_workers=min(len(plan_actions), 4)) as executor:
+            # Submit all simulation tasks at once
+            futures = [executor.submit(self._simulate_safe, init_tokens, actions) for _, actions in plan_actions]
             
-            # Collect results
-            scores = []
-            for future in futures:
-                try:
-                    scores.append(future.result())
-                except Exception as e:
-                    logger.error(f"Error in parallel simulation: {str(e)}")
-                    scores.append(None)
-            
-            return scores
+            # Wait for all to complete and collect results
+            return [future.result() if future.exception() is None else None for future in futures]
     
     def _simulate_safe(self, obs_tokens: torch.LongTensor, actions: List[int]) -> Optional[float]:
         """Wrapper for _simulate that catches exceptions."""
@@ -371,32 +414,28 @@ class VLMWorldModelAgent(Agent):
         if hasattr(self.world_model, 'config'):
             if hasattr(self.world_model.config, 'max_blocks') and hasattr(self.world_model.config, 'tokens_per_block'):
                 max_tokens = self.world_model.config.max_blocks * self.world_model.config.tokens_per_block
-                logger.info(f"Max tokens: {max_tokens}, Current tokens: {tokens.shape[1]}")
-
-        for a_idx, a in enumerate(actions):
-            if done:
-                logger.debug(f"Stopping simulation at step {a_idx} due to done=True")
-                break
-            
-            # Check if we've reached the token limit
+        
+        # Cache the model for faster inference
+        model = self.world_model.eval()
+        
+        # Process actions in batches when possible
+        a_idx = 0
+        while a_idx < len(actions) and not done:
             if max_tokens is not None and tokens.shape[1] >= max_tokens - 1:
-                logger.warning(f"Reached token limit during simulation at step {a_idx}, stopping early")
                 break
-            
+                
             try:
                 # Create action token and concatenate with current tokens
-                act_tok = torch.tensor([[a]], device=self.device, dtype=torch.long)
+                act_tok = torch.tensor([[actions[a_idx]]], device=self.device, dtype=torch.long)
                 inp = torch.cat([tokens, act_tok], dim=1)
                 
-                # Run world model inference
-                out = self.world_model(inp)
+                # Run world model inference with no_grad already applied at function level
+                out = model(inp)
 
                 # Extract reward prediction
                 if out.logits_rewards.size(1) > 0:
                     reward = out.logits_rewards.argmax(dim=-1).item() - 1  # logits class → {-1,0,1}
                     cumulative_reward += reward
-                else:
-                    logger.warning(f"Empty rewards tensor at step {a_idx}")
                 
                 # Check if episode is done
                 if out.logits_ends.size(1) > 0:
@@ -404,15 +443,20 @@ class VLMWorldModelAgent(Agent):
                 
                 # Get next observation tokens
                 tokens = out.logits_observations.argmax(dim=-1)
+                a_idx += 1
                 
-            except IndexError as e:
-                logger.error(f"Index error during simulation at step {a_idx}: {str(e)}")
-                break
-            except RuntimeError as e:
-                logger.error(f"Runtime error during simulation at step {a_idx}: {str(e)}")
-                break
             except Exception as e:
+                # Simplified error handling
                 logger.error(f"Error during simulation at step {a_idx}: {str(e)}")
                 break
 
         return cumulative_reward
+    def delete_usr_message(self, usr_msg: str):
+        """Delete the last user message if it matches the given text."""
+        if self.messages and self.messages[-1].get('role') == 'user' and self.messages[-1].get('content')[0].get('text') == usr_msg:
+            #onlt delete usr_message but keep the frame
+            self.messages[-1]['content'] = self.messages[-1]['content'][1:]  # remove only the first part (the user message)
+
+            logger.debug(f"Deleted user message: {usr_msg}")
+        else:
+            logger.debug("No matching user message to delete.")

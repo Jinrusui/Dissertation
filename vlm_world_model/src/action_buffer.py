@@ -25,6 +25,7 @@ class ActionBuffer:
     def __init__(self):
         """Initializes an empty ActionBuffer."""
         self._plan_queue = deque()
+        self._size = 0  # Cache size for faster access
 
     def set_plan(self, plan: List[str]):
         """
@@ -34,6 +35,7 @@ class ActionBuffer:
             plan: A list of action strings representing the new plan.
         """
         self._plan_queue = deque(plan)
+        self._size = len(plan)
 
     def get_action(self) -> Optional[str]:
         """
@@ -42,25 +44,28 @@ class ActionBuffer:
         Returns:
             The next action string, or None if the plan is empty.
         """
-        if self.is_empty():
+        if self._size == 0:
             return None
+            
+        self._size -= 1
         return self._plan_queue.popleft()
 
     def is_empty(self) -> bool:
         """Checks if the buffer contains any actions."""
-        return not self._plan_queue
+        return self._size == 0
 
     def clear(self):
         """Clears the current plan from the buffer."""
         self._plan_queue.clear()
+        self._size = 0
 
     def get_buffer_status(self) -> dict:
         """
         Returns a dictionary representing the current state of the buffer.
         """
-        current_plan = list(self._plan_queue)
+        # Avoid converting to list for better performance
         return {
-            "size": len(current_plan),
-            "actions_remaining": len(current_plan),
-            "plan": current_plan,
+            "size": self._size,
+            "actions_remaining": self._size,
+            "plan": list(self._plan_queue) if self._size < 10 else f"{self._size} actions queued"
         }

@@ -224,6 +224,8 @@ class RunWithWorldModel():
         if not self.live_chat:
             return
             
+        should_redraw = False
+        
         if message:
             # Truncate long messages for better display
             truncated_message = self._truncate_message(message)
@@ -242,106 +244,98 @@ class RunWithWorldModel():
                 
             # Auto-scroll to bottom when new message is added
             self.scroll_position = max(0, len(self.chat_history) - 10)
+            should_redraw = True
         
-        # Redraw chat window
-        self.chat_window = np.ones((self.chat_window_height, self.chat_window_width, 3), dtype=np.uint8) * 240
-        
-        # Add title
-        cv2.putText(self.chat_window, f"Live Chat - {self.model_name}", (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, self.title_font_size, (0, 0, 0), self.font_thickness)
-        
-        # Draw separator line
-        cv2.line(self.chat_window, (0, 40), (self.chat_window_width, 40), (200, 200, 200), self.font_thickness)
-        
-        # Add scroll instructions
-        cv2.putText(self.chat_window, "Keys: Up/Down arrows to scroll", (self.chat_window_width - 300, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
-        
-        # Draw messages
-        y_pos = 70
-        
-        # Get visible messages based on scroll position
-        visible_messages = self.chat_history[self.scroll_position:self.scroll_position+10]
-        
-        # Draw scroll indicator
-        if self.scroll_position > 0:
-            cv2.putText(self.chat_window, "▲ More messages above", (self.chat_window_width // 2 - 100, 60),
+        # Only redraw if needed (new message or explicit redraw request)
+        if should_redraw or message is None:
+            # Redraw chat window
+            self.chat_window = np.ones((self.chat_window_height, self.chat_window_width, 3), dtype=np.uint8) * 240
+            
+            # Add title
+            cv2.putText(self.chat_window, f"Live Chat - {self.model_name}", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, self.title_font_size, (0, 0, 0), self.font_thickness)
+            
+            # Draw separator line
+            cv2.line(self.chat_window, (0, 40), (self.chat_window_width, 40), (200, 200, 200), self.font_thickness)
+            
+            # Add scroll instructions
+            cv2.putText(self.chat_window, "Keys: Up/Down arrows to scroll", (self.chat_window_width - 300, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
-                        
-        if self.scroll_position + 10 < len(self.chat_history):
-            cv2.putText(self.chat_window, "▼ More messages below", (self.chat_window_width // 2 - 100, self.chat_window_height - 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
-        
-        for sender, msg in visible_messages:
-            # Set color based on sender type
-            if sender == "User":
-                color = (0, 0, 255)  # Red for user
-                bg_color = (240, 220, 220)  # Light red background
-            elif sender == "Model":
-                color = (0, 128, 0)  # Green for model
-                bg_color = (220, 240, 220)  # Light green background
-            else:  # Action
-                color = (255, 0, 0)  # Blue for action
-                bg_color = (220, 220, 240)  # Light blue background
             
-            # Add sender name with background highlight
-            sender_text = f"{sender}:"
-            text_size = cv2.getTextSize(sender_text, cv2.FONT_HERSHEY_SIMPLEX, self.font_size, self.font_thickness)[0]
+            # Get visible messages based on scroll position
+            visible_messages = self.chat_history[self.scroll_position:self.scroll_position+10]
             
-            # Draw background for sender
-            cv2.rectangle(self.chat_window, (5, y_pos - 20), (15 + text_size[0], y_pos + 5), bg_color, -1)
+            # Draw scroll indicator
+            if self.scroll_position > 0:
+                cv2.putText(self.chat_window, "▲ More messages above", (self.chat_window_width // 2 - 100, 60),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
+                            
+            if self.scroll_position + 10 < len(self.chat_history):
+                cv2.putText(self.chat_window, "▼ More messages below", (self.chat_window_width // 2 - 100, self.chat_window_height - 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
             
-            # Draw sender name
-            cv2.putText(self.chat_window, sender_text, (10, y_pos), 
-                        cv2.FONT_HERSHEY_SIMPLEX, self.font_size, color, self.font_thickness)
-            y_pos += 30
+            # Precompute some values for efficiency
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_size = self.font_size
+            thickness = self.font_thickness
+            char_width = int(font_size * 20)
+            max_width = self.chat_window_width - 40
             
-            # Add message text with word wrapping and improved formatting
-            words = msg.split()
-            line = ""
-            line_width = 0
-            max_width = self.chat_window_width - 40  # Left margin of 20px, right margin of 20px
+            # Draw messages
+            y_pos = 70
             
-            # Calculate average character width based on font size
-            char_width = int(self.font_size * 20)
-            
-            for word in words:
-                word_width = len(word) * char_width
+            for sender, msg in visible_messages:
+                # Set color based on sender type
+                if sender == "User":
+                    color = (0, 0, 255)  # Red for user
+                    bg_color = (240, 220, 220)  # Light red background
+                elif sender == "Model":
+                    color = (0, 128, 0)  # Green for model
+                    bg_color = (220, 240, 220)  # Light green background
+                else:  # Action
+                    color = (255, 0, 0)  # Blue for action
+                    bg_color = (220, 220, 240)  # Light blue background
                 
-                # If adding this word would exceed the width
-                if line_width + word_width > max_width:
-                    # Draw background for text line
-                    text_size = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, self.font_size, self.font_thickness)[0]
-                    cv2.rectangle(self.chat_window, (15, y_pos - 20), (25 + text_size[0], y_pos + 5), (235, 235, 235), -1)
+                # Add sender name with background highlight
+                sender_text = f"{sender}:"
+                text_size = cv2.getTextSize(sender_text, font, font_size, thickness)[0]
+                
+                # Draw background for sender
+                cv2.rectangle(self.chat_window, (5, y_pos - 20), (15 + text_size[0], y_pos + 5), bg_color, -1)
+                
+                # Draw sender name
+                cv2.putText(self.chat_window, sender_text, (10, y_pos), font, font_size, color, thickness)
+                y_pos += 30
+                
+                # Simplified word wrapping
+                words = msg.split()
+                line = ""
+                line_width = 0
+                
+                for word in words:
+                    word_width = len(word) * char_width
                     
-                    # Draw text
-                    cv2.putText(self.chat_window, line, (20, y_pos), 
-                                cv2.FONT_HERSHEY_SIMPLEX, self.font_size, (0, 0, 0), self.font_thickness)
-                    y_pos += 30
-                    line = word
-                    line_width = word_width
-                else:
-                    if line:
-                        line += " " + word
-                        line_width += word_width + char_width  # Add space width
-                    else:
+                    if line_width + word_width > max_width:
+                        # Draw text
+                        cv2.putText(self.chat_window, line, (20, y_pos), font, font_size, (0, 0, 0), thickness)
+                        y_pos += 30
                         line = word
                         line_width = word_width
-            
-            # Add the last line
-            if line:
-                # Draw background for text line
-                text_size = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, self.font_size, self.font_thickness)[0]
-                cv2.rectangle(self.chat_window, (15, y_pos - 20), (25 + text_size[0], y_pos + 5), (235, 235, 235), -1)
+                    else:
+                        if line:
+                            line += " " + word
+                            line_width += word_width + char_width
+                        else:
+                            line = word
+                            line_width = word_width
                 
-                # Draw text
-                cv2.putText(self.chat_window, line, (20, y_pos), 
-                            cv2.FONT_HERSHEY_SIMPLEX, self.font_size, (0, 0, 0), self.font_thickness)
+                # Add the last line
+                if line:
+                    cv2.putText(self.chat_window, line, (20, y_pos), font, font_size, (0, 0, 0), thickness)
+                
+                y_pos += 40  # Extra space between messages
             
-            y_pos += 40  # Extra space between messages
-        
-        # Display the chat window if real-time rendering is enabled
-        if self.real_time_render and self.live_chat:
+            # Display the chat window
             cv2.imshow("Live Chat", self.chat_window)
             cv2.waitKey(1)
 
@@ -440,6 +434,9 @@ class RunWithWorldModel():
         
         print('The reward for ' + self.env_name + ' is: ' + str(self.rewards))
         
+        # Save chat logs if any
+        self.save_chat_logs()
+        
         # Close the environment recorder
         self.env.close_video_recorder()
         
@@ -448,9 +445,7 @@ class RunWithWorldModel():
 
     def save_chat_logs(self):
         """Save chat logs to a file"""
-        if not self.live_chat or not self.chat_history:
-            return
-            
+        # Always save message history, regardless of live_chat setting
         chat_log_path = os.path.join(self.new_dir, f"{self.temp_env_name[:-3]}_chat_log.txt")
         
         try:
@@ -458,8 +453,67 @@ class RunWithWorldModel():
                 f.write(f"Chat Log for {self.env_name} with {self.model_name}\n")
                 f.write("="*50 + "\n\n")
                 
-                for sender, msg in self.chat_history:
-                    f.write(f"{sender}: {msg}\n\n")
+                # Save the chat history from the UI (if live_chat was enabled)
+                if self.live_chat and self.chat_history:
+                    f.write("=== UI CHAT HISTORY ===\n\n")
+                    for sender, msg in self.chat_history:
+                        f.write(f"{sender}: {msg}\n\n")
+                
+                # Save the full message history from the model
+                if hasattr(self, 'model') and hasattr(self.model, 'messages'):
+                    f.write("\n\n=== FULL MODEL MESSAGE HISTORY ===\n\n")
+                    for msg in self.model.messages:
+                        role = msg.get('role', 'unknown')
+                        
+                        # Handle different message formats based on model type
+                        if self.model_name in ['gpt4', 'gpt4o']:
+                            content = msg.get('content', '')
+                            if isinstance(content, list):
+                                content_str = ""
+                                for item in content:
+                                    if isinstance(item, dict):
+                                        if item.get('type') == 'text':
+                                            content_str += f"{item.get('text', '')}\n"
+                                        elif item.get('type') == 'image_url':
+                                            content_str += "[IMAGE]\n"
+                                    else:
+                                        content_str += str(item) + "\n"
+                                f.write(f"{role}:\n{content_str}\n\n")
+                            else:
+                                f.write(f"{role}: {content}\n\n")
+                        elif self.model_name == 'claude':
+                            content = msg.get('content', [])
+                            content_str = ""
+                            if isinstance(content, list):
+                                for item in content:
+                                    if isinstance(item, dict):
+                                        if item.get('type') == 'text':
+                                            content_str += f"{item.get('text', '')}\n"
+                                        elif item.get('type') == 'image':
+                                            content_str += "[IMAGE]\n"
+                                    else:
+                                        content_str += str(item) + "\n"
+                            else:
+                                content_str = str(content)
+                            f.write(f"{role}:\n{content_str}\n\n")
+                        elif self.model_name == 'gemini':
+                            parts = msg.get('parts', [])
+                            content_str = ""
+                            if isinstance(parts, list):
+                                for item in parts:
+                                    if isinstance(item, dict):
+                                        if 'text' in item:
+                                            content_str += f"{item.get('text', '')}\n"
+                                        elif 'mime_type' in item and 'image' in item.get('mime_type', ''):
+                                            content_str += "[IMAGE]\n"
+                                    else:
+                                        content_str += str(item) + "\n"
+                            else:
+                                content_str = str(parts)
+                            f.write(f"{role}:\n{content_str}\n\n")
+                        else:
+                            # Generic fallback for other models
+                            f.write(f"{role}: {json.dumps(msg, indent=2)}\n\n")
                     
             print(f"Chat logs saved to {chat_log_path}")
         except Exception as e:
@@ -487,8 +541,9 @@ class RunWithWorldModel():
         try:
             for n in range(self.num_timesteps-self.steps_taken):
                 
-                # resize cv2 512x512
-                observation = cv2.resize(observation, (512, 512))
+                # resize cv2 to 512x512 only if needed
+                if observation.shape[0] != 512 or observation.shape[1] != 512:
+                    observation = cv2.resize(observation, (512, 512), interpolation=cv2.INTER_AREA)
 
                 # Check for keyboard input for scrolling chat
                 if self.real_time_render and self.live_chat:
@@ -529,122 +584,64 @@ class RunWithWorldModel():
                             observation, info = self.env.reset()
 
                 elif n % 2 == 1:
-
-                    # Create buffer of 4 frames
-                    if n < self.buffer_pause:
-                        # Update chat window with user message if real-time rendering is enabled
-                        # if self.real_time_render and self.live_chat:
-                        #     self.update_chat_window(usr_msg1, is_user=True)
-
-                        # Add frame and reason
-                        #self.model.add_user_message(observation, usr_msg1)
-
-                        # Get response from model with action
-                        action, full_response = self.model.generate_response(self.new_dir)
-                        
-                        # Update chat window with model response if real-time rendering is enabled
-                        if self.real_time_render and self.live_chat:
-                            # Extract reasoning from the response if available
-                            reasoning = "Analyzing game frame..."
-                            from_buffer = full_response.get("from_buffer", False)
-                            
-                            if from_buffer:
-                                reasoning = "Using pre-validated action from buffer"
-                                # Display buffer status if available
-                                if "buffer_status" in full_response:
-                                    buffer_status = full_response["buffer_status"]
-                                    buffer_info = f"Buffer: {buffer_status['size']} plans, {buffer_status['actions_remaining']} actions remaining"
-                                    self.update_chat_window(buffer_info)
-                            elif isinstance(full_response, dict) and "reasoning" in full_response:
-                                reasoning = full_response["reasoning"]
-                            elif isinstance(full_response, dict) and "plans" in full_response and len(full_response["plans"]) > 0:
-                                reasoning = full_response["plans"][0].get("explanation", "Selected best action based on world model simulation")
-                            
-                            self.update_chat_window(reasoning)
-                            self.update_chat_window(f"Action: {action}", is_action=True)
-
-                        # Add models reasoning to context
-                        self.model.add_assistant_message()
-                        
-                        # Save action
-                        self.action_list.append(action)
-
-                        # Perform Action
-                        observation, reward, terminated, truncated, info = self.env.step(action)
-                        if self.real_time_render:
-                            render_frame = cv2.cvtColor(observation, cv2.COLOR_RGB2BGR)
-                            cv2.imshow("Real-time Rendering", render_frame)
-                            cv2.waitKey(1)
-
-                        self.env.render()
-                        
-                        # Sum reward and save
-                        self.rewards += reward
-                        self.cum_rewards.append(self.rewards)
-
-                        # Check done condition 
-                        if terminated or truncated:
-                            observation, info = self.env.reset()
+                    # Process model action on odd steps
                     
-                    else:
-                        # Update chat window with user message if real-time rendering is enabled
-                        # if self.real_time_render and self.live_chat:
-                        #     self.update_chat_window("What action should I take now?", is_user=True)
+                    # Get response from model with action
+                    action, full_response = self.model.generate_response(self.new_dir)
+                    print("\n\n")
+                    print(full_response)
+                    print("\n\n")
+                    
+                    
+                    # Handle chat window updates if needed
+                    if self.real_time_render and self.live_chat:
+                        # Extract reasoning from the response
+                        reasoning = "Analyzing game frame..."
+                        from_buffer = full_response.get("from_buffer", False)
                         
-                        # Add frame and reason
-                        #self.model.add_user_message(observation, usr_msg1)
-
-                        # Have model reason from the given image
-                        action, full_response = self.model.generate_response(self.new_dir)
-                        
-                        # Update chat window with model response if real-time rendering is enabled
-                        if self.real_time_render and self.live_chat:
-                            # Extract reasoning from the response if available
-                            reasoning = "Analyzing game frame..."
-                            from_buffer = full_response.get("from_buffer", False)
-                            
-                            if from_buffer:
-                                reasoning = "Using pre-validated action from buffer"
-                                # Display buffer status if available
-                                if "buffer_status" in full_response:
-                                    buffer_status = full_response["buffer_status"]
-                                    buffer_info = f"Buffer: {buffer_status['size']} plans, {buffer_status['actions_remaining']} actions remaining"
-                                    self.update_chat_window(buffer_info)
-                            elif isinstance(full_response, dict) and "reasoning" in full_response:
+                        if from_buffer:
+                            reasoning = "Using pre-validated action from buffer"
+                            # Display buffer status if available
+                            if "buffer_status" in full_response:
+                                buffer_status = full_response["buffer_status"]
+                                buffer_info = f"Buffer: {buffer_status['size']} plans, {buffer_status['actions_remaining']} actions remaining"
+                                self.update_chat_window(buffer_info)
+                        elif isinstance(full_response, dict):
+                            if "reasoning" in full_response:
                                 reasoning = full_response["reasoning"]
-                            elif isinstance(full_response, dict) and "plans" in full_response and len(full_response["plans"]) > 0:
+                            elif "plans" in full_response and len(full_response["plans"]) > 0:
                                 reasoning = full_response["plans"][0].get("explanation", "Selected best action based on world model simulation")
-                            
-                            self.update_chat_window(reasoning)
-                            self.update_chat_window(f"Action: {action}", is_action=True)
-
-                        # Add models reasoning to context
-                        self.model.add_assistant_message()
-
-                        # Save action
-                        self.action_list.append(action)
                         
-                        # Perform Action
-                        observation, reward, terminated, truncated, info = self.env.step(action)
-                        if self.real_time_render:
-                            render_frame = cv2.cvtColor(observation, cv2.COLOR_RGB2BGR)
-                            cv2.imshow("Real-time Rendering", render_frame)
-                            cv2.waitKey(1)
+                        self.update_chat_window(reasoning)
+                        self.update_chat_window(f"Action: {action}", is_action=True)
 
-                        self.env.render()
+                    # Add models reasoning to context
+                    # self.model.add_assistant_message() # Redundant: agent now adds its own response to history.
+                    
+                    # Save action
+                    self.action_list.append(action)
 
-                        # Sum reward and save
-                        self.rewards += reward
-                        self.cum_rewards.append(self.rewards)
+                    # Perform Action
+                    observation, reward, terminated, truncated, info = self.env.step(action)
+                    
+                    # Update rendering if needed
+                    if self.real_time_render:
+                        render_frame = cv2.cvtColor(observation, cv2.COLOR_RGB2BGR)
+                        cv2.imshow("Real-time Rendering", render_frame)
+                        cv2.waitKey(1)
 
+                    # Sum reward and save
+                    self.rewards += reward
+                    self.cum_rewards.append(self.rewards)
 
+                    # Only delete messages if not in buffer phase
+                    if n >= self.buffer_pause:
                         # Context buffer of only the 4 most recent frames
-                        # delete oldest context
-                        self.model.delete_messages()
-                        
-                        # Check done condition 
-                        if terminated or truncated:
-                            observation, info = self.env.reset()
+                        self.model.manage_context_window(1)
+                    
+                    # Check done condition 
+                    if terminated or truncated:
+                        observation, info = self.env.reset()
                 
                 else:
                     # Perform no-op action
@@ -685,8 +682,9 @@ class RunWithWorldModel():
                 cv2.destroyWindow("Real-time Rendering")
                 if self.live_chat:
                     cv2.destroyWindow("Live Chat")
-                    # Save chat logs
-                    self.save_chat_logs()
+            
+            # Always save chat logs, regardless of real_time_render setting
+            self.save_chat_logs()
             
             # Close the environment recorder
             self.env.close_video_recorder()

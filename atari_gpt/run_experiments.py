@@ -288,7 +288,7 @@ class run():
 
                     # Context buffer of only the 4 most recent frames
                     # delete oldest context
-                    self.model.delete_messages()
+                    self.model.manage_context_window()
                     
                     # Check done condition 
                     if terminated or truncated:

@@ -3,25 +3,25 @@ system:
   seed: 42
   log_level: INFO
   log_dir: "logs/"
-  real_time_render: True
-  live_chat: True   # Enable/disable the live chat window alongside rendering
+  real_time_render: False
+  live_chat: False  # Enable/disable the live chat window alongside rendering
 
 # VLM Planner settings (based on atari_gpt)
 vlm:
   # Model settings
   model_key: "gpt4o"  # Options: gpt4, gpt4o, claude, gemini, qwen
-  model_name: "gpt-4o"  # Specific model name
-  temperature: 1.0
-  use_world_model: True
+  model_name: "gpt-o4-mini"  # Specific model name
+  temperature: 0.5
+  use_world_model: False
   
   # Planning configuration
-  num_plans: 3       # Number of alternative plans to generate
-  plan_horizon: 5   # How many steps ahead to plan
+  num_plans: 1       # Number of alternative plans to generate
+  plan_horizon: 1   # How many steps ahead to plan
   action_placeholders: "action1, action2, ..., action{plan_horizon}"  # Will be formatted at runtime
   plan_placeholders: ",...more plans up to {num_plans} total..."      # Will be formatted at runtime
 
   # Action buffer configuration
-  use_action_buffer: True   # Enable/disable the action buffer
+  use_action_buffer: False   # Enable/disable the action buffer
   action_buffer_size: 10    # Maximum number of plans to store in the buffer
   action_buffer_threshold: 0.0  # Minimum score required for a plan to be stored
 
